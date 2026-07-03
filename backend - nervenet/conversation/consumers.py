@@ -63,6 +63,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             pass
 
     async def handle_message_turn(self, conversation_id, prompt, provider, model, attachment_ids, memory_updates):
+        print(f"[WS TURN START] conv: {conversation_id}, prompt: {prompt}, attachment_ids: {attachment_ids}", flush=True)
         try:
             # Generate a new unique message ID for the assistant's reply
             assistant_message_id = str(uuid.uuid4())
@@ -88,7 +89,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 session_id=conversation_id,
                 content=prompt,
                 role="user",
-                memory_updates=memory_updates
+                memory_updates=memory_updates,
+                attachment_ids=attachment_ids
             )
             
             content = chat_response.response_content

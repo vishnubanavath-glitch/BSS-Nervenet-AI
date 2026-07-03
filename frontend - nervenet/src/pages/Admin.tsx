@@ -4,7 +4,8 @@ import api from "@/lib/api";
 import {
   ArrowLeft, Users, TrendingUp, Cpu,
   Settings, Key, Layers, ShieldCheck, Database, CreditCard,
-  Plus, X, RefreshCw, HelpCircle, Eye, EyeOff
+  Plus, X, RefreshCw, HelpCircle,
+  Eye, EyeOff
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -23,7 +24,6 @@ export const Admin: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [settings, setSettings] = useState<any[]>([]);
-  // Real quota data per provider: { [providerId]: quotaData | "loading" | "error" }
   const [quotaMap, setQuotaMap] = useState<Record<string, any>>({});
   
   // MCP states
@@ -83,10 +83,6 @@ export const Admin: React.FC = () => {
       setProviders(resProv.data);
       setModels(resModels.data);
       setMcpServers(resMcp.data || []);
-      // Also fetch platform wallet balance to calculate token capacity
-      try {
-        await api.get("/payment/balance");
-      } catch {}
       setPlans(resPlans.data);
       setFiles(resFiles.data);
       setAuditLogs(resLogs.data);
@@ -515,10 +511,10 @@ export const Admin: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-emerald-400">
-                          ${u.balance !== undefined ? u.balance.toFixed(2) : "0.00"}
+                          ${u.wallet?.balance !== undefined ? u.wallet.balance.toFixed(2) : "0.00"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-violet-400/90">
-                          {u.total_tokens_used !== undefined ? u.total_tokens_used.toLocaleString() : "0"}
+                          {u.wallet?.total_tokens_used !== undefined ? u.wallet.total_tokens_used.toLocaleString() : "0"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {u.is_admin ? (
@@ -1083,14 +1079,30 @@ export const Admin: React.FC = () => {
                     )}
 
                     {!isEditing && (
-                      <div className="flex gap-2 border-t border-border/20 pt-4">
+                      <div className="flex gap-2 border-t border-border/20 pt-4 flex-wrap">
                         <button
                           onClick={() => handleTestMcpServer(s.id)}
                           disabled={tStatus?.status === "loading"}
-                          className="flex-1 py-2 bg-primary/10 hover:bg-primary/25 border border-primary/20 text-primary hover:text-white text-xs font-bold rounded-xl select-none transition-all active:scale-95 disabled:opacity-50"
+                          className="flex-1 py-2 bg-primary/10 hover:bg-primary/25 border border-primary/20 text-primary hover:text-white text-xs font-bold rounded-xl select-none transition-all active:scale-95 disabled:opacity-50 min-w-[120px]"
                         >
                           {tStatus?.status === "loading" ? "Testing..." : "Test Connection"}
                         </button>
+                        
+                        {s.server_type === "sse" && s.env_variables_encrypted && (() => {
+                          const apiBase = api.defaults.baseURL || "/api";
+                          const authUrl = apiBase.startsWith("http")
+                            ? `${apiBase.replace(/\/api$/, "")}/api/admin/mcp/${s.id}/oauth/authorize`
+                            : `${window.location.origin}${apiBase.replace(/\/api$/, "")}/api/admin/mcp/${s.id}/oauth/authorize`;
+                          return (
+                            <a
+                              href={authUrl}
+                              className="px-3 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 text-yellow-400 hover:text-white text-xs font-bold rounded-xl text-center select-none transition-all active:scale-95 flex items-center justify-center gap-1"
+                            >
+                              🔑 Authorize
+                            </a>
+                          );
+                        })()}
+
                         <button
                           onClick={() => {
                             setEditingMcpId(s.id);

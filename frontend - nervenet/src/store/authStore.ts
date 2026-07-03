@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import api from "@/lib/api";
+import { useChatStore } from "./chatStore";
 
 interface User {
   id: string;
@@ -35,6 +36,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setTokens: (access, refresh) => {
     localStorage.setItem("access_token", access);
     localStorage.setItem("refresh_token", refresh);
+    // Reset chat state before activating new session to prevent cross-account bleed
+    try {
+      useChatStore.getState().clearStore();
+    } catch (e) {
+      console.error("Failed to clear chat store on login", e);
+    }
     set({ accessToken: access, refreshToken: refresh, isAuthenticated: true });
   },
 
@@ -64,6 +71,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    // Clear chat store state
+    try {
+      useChatStore.getState().clearStore();
+    } catch (e) {
+      console.error("Failed to clear chat store", e);
+    }
     set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
   }
 }));

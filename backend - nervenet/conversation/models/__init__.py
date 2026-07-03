@@ -4,6 +4,7 @@ from .memory import ConversationMemory
 from .summary import ConversationSummary
 from .wallet import Wallet
 from .attachment import Attachment
+from .admin import ProviderSettings, LLMModel, BillingPlan, AppSetting, SupportTicket, MCPServer
 
 __all__ = [
     "ChatSession",
@@ -14,4 +15,11 @@ __all__ = [
     "ConversationSummary",
     "Wallet",
     "Attachment",
+    "ProviderSettings",
+    "LLMModel",
+    "BillingPlan",
+    "AppSetting",
+    "SupportTicket",
+    "MCPServer",
 ]
+

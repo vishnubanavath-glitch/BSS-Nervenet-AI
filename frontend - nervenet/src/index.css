@@ -37,33 +37,33 @@
   }
 
   .dark {
-    /* Dark Theme Spec */
-    --background: 225 38.5% 7.1%; /* #0B0F19 */
+    /* Dark Theme Spec - Aligned to Admin Dashboard (#070709 and #0a0a0d) */
+    --background: 240 13% 3%; /* #070709 */
     --foreground: 210 40% 98%; /* #F8FAFC */
 
-    --card: 222 47% 11%; /* #111827 */
+    --card: 240 13% 4%; /* #0a0a0d */
     --card-foreground: 210 40% 98%; /* #F8FAFC */
 
-    --popover: 222 47% 11%; /* #111827 */
+    --popover: 240 13% 4%; /* #0a0a0d */
     --popover-foreground: 210 40% 98%; /* #F8FAFC */
 
     --primary: 37.4 91.3% 54.9%; /* #F5A623 */
-    --primary-foreground: 225 38.5% 7.1%; /* #0B0F19 */
+    --primary-foreground: 240 13% 3%; /* #070709 */
 
-    --secondary: 217.2 32.6% 17.5%; /* #1E293B */
+    --secondary: 240 13% 7%; /* #0f0f13 */
     --secondary-foreground: 210 40% 98%; /* #F8FAFC */
 
-    --muted: 217.2 32.6% 17.5%; /* Elevated Surface #1E293B */
+    --muted: 240 13% 7%; /* #0f0f13 */
     --muted-foreground: 215.4 25% 65.1%; /* #94A3B8 */
 
-    --accent: 217.2 32.6% 17.5%; /* Elevated Surface #1E293B */
+    --accent: 240 13% 7%; /* #0f0f13 */
     --accent-foreground: 210 40% 98%; /* #F8FAFC */
 
     --destructive: 0 84.3% 60.2%; /* #EF4444 */
     --destructive-foreground: 210 40% 98%; /* #F8FAFC */
 
-    --border: 217.2 25% 26.7%; /* #334155 */
-    --input: 217.2 25% 26.7%; /* #334155 */
+    --border: 240 10% 12%; /* #1e1e24 */
+    --input: 240 10% 12%; /* #1e1e24 */
     --ring: 37.4 91.3% 54.9%; /* #F5A623 */
   }
 }
@@ -125,4 +125,35 @@
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* Skeleton shimmer for preview loading */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--secondary)) 25%,
+    hsl(var(--border) / 0.6) 50%,
+    hsl(var(--secondary)) 75%
+  );
+  background-size: 1200px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* Progress bar fill animation for preview loading */
+@keyframes progress-fill {
+  0%   { width: 0%; }
+  30%  { width: 35%; }
+  55%  { width: 60%; }
+  75%  { width: 78%; }
+  90%  { width: 88%; }
+  100% { width: 92%; }
+}
+
+.preview-progress-bar {
+  animation: progress-fill 4s ease-out forwards;
 }

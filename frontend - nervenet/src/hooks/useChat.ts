@@ -27,7 +27,7 @@ export const useChat = () => {
     setActiveArtifact
   } = useChatStore();
 
-  const uploadAttachment = useCallback(async (file: File): Promise<string | null> => {
+  const uploadAttachment = useCallback(async (file: File): Promise<any | null> => {
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -36,7 +36,7 @@ export const useChat = () => {
           "Content-Type": "multipart/form-data",
         },
       });
-      return res.data.id;
+      return res.data;
     } catch (err) {
       console.error("Upload attachment failed:", err);
       return null;

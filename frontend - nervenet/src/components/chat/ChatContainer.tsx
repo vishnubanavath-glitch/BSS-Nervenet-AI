@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useSocket } from "@/hooks/useSocket";
 import { ModelSelector } from "@/components/chat/ModelSelector";
@@ -75,7 +75,36 @@ export const ChatContainer: React.FC = () => {
     fetchDetails();
   }, [currentConversationId, messages.length]);
 
-  // Wallet and token states hidden for now
+  // Prepaid Wallet States
+  const [balance, setBalance] = useState<number>(5.00);
+  const [totalTokens, setTotalTokens] = useState<number>(0);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState(10);
+
+  const fetchBalance = useCallback(async () => {
+    try {
+      const res = await api.get("/payment/balance");
+      setBalance(res.data.balance);
+      setTotalTokens(res.data.total_tokens_used || 0);
+    } catch (err) {
+      console.error("Fetch balance failed", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBalance();
+  }, [messages.length, fetchBalance]);
+
+  const handleTopUp = async () => {
+    try {
+      const res = await api.post("/payment/add-funds", { amount: topUpAmount });
+      setBalance(res.data.balance);
+      alert(`Successfully loaded $${topUpAmount.toFixed(2)} credits to your wallet!`);
+      setShowTopUp(false);
+    } catch (err) {
+      console.error("Top up failed", err);
+    }
+  };
 
   // Listen to scroll events to update isAtBottomRef
   useEffect(() => {
@@ -114,10 +143,23 @@ export const ChatContainer: React.FC = () => {
   const isLimitReached = msgCount >= MAX_MESSAGES;
   const limitPercent = Math.min((msgCount / MAX_MESSAGES) * 100, 100);
 
-  // conversationCost calculations hidden for now
+  // Sum up cost of all assistant messages with telemetry
+  const conversationCost = useMemo(() => {
+    return messages.reduce((acc, m) => {
+      if (m.role === "assistant" && m.metadata?.telemetry?.cost) {
+        return acc + m.metadata.telemetry.cost;
+      }
+      return acc;
+    }, 0);
+  }, [messages]);
+
+  // Log telemetry info to keep states active and referenced
+  if (balance || totalTokens || conversationCost) {
+    console.debug("Telemetry stats:", balance, totalTokens, conversationCost);
+  }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
-  const handleSendPrompt = async (prompt: string, attachmentIds: string[]) => {
+  const handleSendPrompt = async (prompt: string, attachments: any[]) => {
     if (isLimitReached) return;
     
     const memoryUpdates: Record<string, any> = {};
@@ -132,9 +174,9 @@ export const ChatContainer: React.FC = () => {
 
     if (!activeId) {
       const newConv = await createConversation("New Chat");
-      sendMessage(prompt, attachmentIds, newConv.id, finalMemoryUpdates);
+      sendMessage(prompt, attachments, newConv.id, finalMemoryUpdates);
     } else {
-      sendMessage(prompt, attachmentIds, undefined, finalMemoryUpdates);
+      sendMessage(prompt, attachments, undefined, finalMemoryUpdates);
     }
   };
 
@@ -220,6 +262,8 @@ export const ChatContainer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Wallet, All-time and This chat badges are hidden as requested */}
+
             {/* Message counter + progress bar */}
             {currentConversationId && msgCount > 0 && (
               <div className="flex flex-col items-end gap-1 select-none">
@@ -395,6 +439,73 @@ export const ChatContainer: React.FC = () => {
             </div>
           </div>
         </aside>
+      )}
+      {/* ── TOP UP WALLET MODAL ─────────────────────────────────────── */}
+      {showTopUp && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-[#0a0a0d] border border-border/80 p-6 rounded-2xl w-96 space-y-4 max-w-md select-none">
+            <div className="flex items-center justify-between border-b border-border/30 pb-3">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                💰 Top Up Wallet Credits
+              </h3>
+              <button onClick={() => setShowTopUp(false)} className="text-muted-foreground hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-1">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider block">Select Amount to Add</span>
+              <div className="grid grid-cols-3 gap-2">
+                {[5, 10, 20].map(amt => (
+                  <button
+                    key={amt}
+                    onClick={() => setTopUpAmount(amt)}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                      topUpAmount === amt
+                        ? "bg-primary border-primary text-white"
+                        : "bg-secondary/20 border-border/60 hover:bg-secondary/40 text-gray-300"
+                    }`}
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {[50, 100].map(amt => (
+                  <button
+                    key={amt}
+                    onClick={() => setTopUpAmount(amt)}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                      topUpAmount === amt
+                        ? "bg-primary border-primary text-white"
+                        : "bg-secondary/20 border-border/60 hover:bg-secondary/40 text-gray-300"
+                    }`}
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-secondary/10 border border-border/30 rounded-xl space-y-1.5">
+              <div className="flex justify-between text-xs font-medium">
+                <span className="text-muted-foreground">Gateway Simulator:</span>
+                <span className="text-white font-bold uppercase tracking-wide">Stripe Test</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-muted-foreground">Charge Amount:</span>
+                <span className="text-emerald-400 font-extrabold">${topUpAmount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleTopUp}
+              className="w-full py-2.5 bg-primary hover:bg-primary/95 text-white font-bold rounded-xl text-xs transition-all active:scale-[0.98]"
+            >
+              Simulate Stripe Payment
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

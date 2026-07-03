@@ -203,6 +203,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
 
+  // Pre-process streaming content: replace any in-progress visual code block with a loading sentinel
+  // so ReactMarkdown never renders raw code characters during streaming.
+  const PREVIEW_SENTINEL = "::PREVIEW_LOADING::";
+  const processedContent = React.useMemo(() => {
+    if (!isLast || !isStreaming || isUser) return message.content;
+    let result = message.content;
+    // Replace fully-closed visual code blocks (html/svg/mermaid) with a sentinel
+    result = result.replace(
+      /```(html|svg|mermaid)[\s\S]*?```/gi,
+      PREVIEW_SENTINEL
+    );
+    // Replace still-open (unclosed) visual blocks — from the ``` to end of string
+    result = result.replace(
+      /```(html|svg|mermaid)[\s\S]*$/i,
+      PREVIEW_SENTINEL
+    );
+    return result;
+  }, [message.content, isLast, isStreaming, isUser]);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -298,7 +317,67 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     className="rounded-2xl border border-border/60 max-w-xl w-full my-4 shadow-2xl animate-in zoom-in-95 duration-300 object-cover"
                     {...props} />;
                 },
-                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                p: ({ children }) => {
+                  // Render sentinel as a skeleton loading card (not a spinner)
+                  const text = typeof children === "string" ? children : Array.isArray(children) ? children.join("") : "";
+                  if (text.includes(PREVIEW_SENTINEL)) {
+                    return (
+                      <div className="my-4 rounded-2xl border border-border/40 overflow-hidden shadow-2xl not-prose bg-secondary/10 dark:bg-[#0d0d11]">
+                        {/* Top progress bar */}
+                        <div className="h-0.5 bg-border/30 relative overflow-hidden">
+                          <div className="preview-progress-bar h-full bg-gradient-to-r from-primary via-primary/80 to-primary/40 rounded-full absolute left-0 top-0" />
+                        </div>
+
+                        {/* Header skeleton */}
+                        <div className="flex items-center justify-between px-5 py-3 border-b border-border/20">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-3 h-3 rounded-full skeleton-shimmer opacity-60" />
+                            <div className="h-2.5 w-28 rounded-full skeleton-shimmer opacity-60" />
+                          </div>
+                          <div className="flex gap-1.5">
+                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+                          </div>
+                        </div>
+
+                        {/* Chart/content skeleton body */}
+                        <div className="p-5 space-y-4">
+                          {/* Chart bars skeleton */}
+                          <div className="flex items-end gap-2 h-28 px-2">
+                            {[65, 40, 80, 55, 90, 35, 70, 48, 82, 60].map((h, i) => (
+                              <div
+                                key={i}
+                                className="flex-1 rounded-t-md skeleton-shimmer opacity-50"
+                                style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
+                              />
+                            ))}
+                          </div>
+
+                          {/* X-axis skeleton */}
+                          <div className="h-px bg-border/30 mx-2" />
+
+                          {/* Legend skeleton rows */}
+                          <div className="space-y-2 pt-1">
+                            {[70, 50, 85].map((w, i) => (
+                              <div key={i} className="flex items-center gap-2.5">
+                                <div className="w-3 h-3 rounded-sm skeleton-shimmer opacity-50" style={{ animationDelay: `${i * 0.15}s` }} />
+                                <div className="h-2 rounded-full skeleton-shimmer opacity-40" style={{ width: `${w}%`, animationDelay: `${i * 0.1}s` }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Footer label */}
+                        <div className="px-5 pb-4 flex items-center gap-2 text-[10px] font-semibold text-muted-foreground/50 tracking-wide uppercase">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                          Generating preview…
+                        </div>
+                      </div>
+                    );
+                  }
+                  return <p className="mb-3 last:mb-0">{children}</p>;
+                },
                 ul: ({ children }) => <ul className="list-disc pl-5 mb-3">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal pl-5 mb-3">{children}</ol>,
                 li: ({ children }) => <li className="mb-1">{children}</li>,
@@ -327,13 +406,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   const lang = match ? match[1].toLowerCase() : "";
 
                   // Interactive visual artifacts
-                  if ((lang === "html" || lang === "svg") && (!isLast || !isStreaming)) {
+                  if (lang === "html" || lang === "svg" || lang === "mermaid") {
+                    if (isLast && isStreaming) {
+                      return (
+                        <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
+                          <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                          <span className="text-xs font-semibold text-muted-foreground animate-pulse">
+                            Rendering live preview...
+                          </span>
+                        </div>
+                      );
+                    }
+                    if (lang === "mermaid") {
+                      return <MermaidDiagram code={codeString} />;
+                    }
                     return <InlineArtifact code={codeString} language={lang} />;
-                  }
-
-                  // Mermaid diagrams
-                  if (lang === "mermaid" && (!isLast || !isStreaming)) {
-                    return <MermaidDiagram code={codeString} />;
                   }
 
                   // Standard code block
@@ -357,7 +444,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 }
               }}
             >
-              {message.content}
+              {processedContent}
             </ReactMarkdown>
           </div>
         )}
@@ -374,7 +461,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Usage metrics hidden for now */}
+        {/* Usage metrics */}
+        {message.metadata?.telemetry && (
+          <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted-foreground/50 select-none pt-2">
+            <span className="uppercase tracking-wide">
+              ↑ {message.metadata.telemetry.prompt_tokens} in
+            </span>
+            <span className="uppercase tracking-wide">
+              ↓ {message.metadata.telemetry.completion_tokens} out
+            </span>
+            {message.metadata.telemetry.cache_read_tokens > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+                ⚡ {message.metadata.telemetry.cache_read_tokens} cached (−90% cost)
+              </span>
+            )}
+            {message.metadata.telemetry.cost > 0 && (
+              <span className="text-violet-400/70 uppercase tracking-wide">
+                ${message.metadata.telemetry.cost.toFixed(5)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

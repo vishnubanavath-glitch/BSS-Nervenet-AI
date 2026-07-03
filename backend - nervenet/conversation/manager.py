@@ -102,7 +102,8 @@ class ConversationManager:
         session_id: str,
         content: str,
         role: str = "user",
-        memory_updates: Optional[Dict[str, Any]] = None
+        memory_updates: Optional[Dict[str, Any]] = None,
+        attachment_ids: Optional[List[str]] = None
     ) -> ChatResponse:
         """Orchestrate the complete pipeline for a new incoming message."""
         # 1. Load and validate session existence
@@ -124,6 +125,98 @@ class ConversationManager:
             role=role,
             content=content
         )
+
+        # 3b. Resolve attachments and link them to the user message
+        image_blocks: List[Dict] = []
+        text_attachments: List[str] = []
+        print(f"[ATTACHMENT RESOLVE] Processing attachments: {attachment_ids}", flush=True)
+        if attachment_ids:
+            import base64
+            from asgiref.sync import sync_to_async
+            from conversation.models.attachment import Attachment
+
+            for att_id in attachment_ids:
+                try:
+                    att = await sync_to_async(Attachment.objects.get)(id=att_id)
+                    print(f"[ATTACHMENT RESOLVE] Found attachment in DB: {att.filename}, type={att.mime_type}, has_text={bool(att.extracted_text)}, size={att.file_size}", flush=True)
+                    # Link attachment to this message
+                    att.message = user_msg
+                    await sync_to_async(att.save)()
+                    
+                    mime = att.mime_type or ""
+                    if mime.startswith("image/"):
+                        # Load image file and base64-encode it for the Claude vision API
+                        file_path = att.file.path
+                        with open(file_path, "rb") as fh:
+                            img_data = fh.read()
+                        b64 = base64.b64encode(img_data).decode("utf-8")
+                        image_blocks.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime,
+                                "data": b64
+                            }
+                        })
+                        print(f"[ATTACHMENT RESOLVE] Image block created successfully for {att.filename}", flush=True)
+                    elif mime == "application/pdf":
+                        text_len = len(att.extracted_text) if att.extracted_text else 0
+                        if text_len >= 50:
+                            # Standard PDF with extractable text
+                            text_attachments.append(
+                                f"=== Attachment: {att.filename} ===\n{att.extracted_text}\n=== End of Attachment ===\n"
+                            )
+                            print(f"[ATTACHMENT RESOLVE] PDF Text attachment injected: {att.filename} ({text_len} chars)", flush=True)
+                        else:
+                            # Scanned PDF! Extract page images
+                            print(f"[ATTACHMENT RESOLVE] PDF {att.filename} has minimal text ({text_len} chars) - extracting page images", flush=True)
+                            try:
+                                from pypdf import PdfReader
+                                reader = PdfReader(att.file.path)
+                                img_count = 0
+                                for page in reader.pages:
+                                    for img in page.images:
+                                        if img_count >= 5:  # Cap at 5 images
+                                            break
+                                        name = img.name.lower()
+                                        media_type = "image/jpeg"
+                                        if name.endswith(".png"):
+                                            media_type = "image/png"
+                                        elif name.endswith(".gif"):
+                                            media_type = "image/gif"
+                                        elif name.endswith(".webp"):
+                                            media_type = "image/webp"
+                                        
+                                        base64_data = base64.b64encode(img.data).decode("utf-8")
+                                        image_blocks.append({
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "media_type": media_type,
+                                                "data": base64_data
+                                            }
+                                        })
+                                        img_count += 1
+                                print(f"[ATTACHMENT RESOLVE] Extracted {img_count} page images from PDF {att.filename}", flush=True)
+                            except Exception as pdf_err:
+                                print(f"[ATTACHMENT RESOLVE] Failed to extract page images from PDF {att.filename}: {pdf_err}", flush=True)
+                    elif att.extracted_text:
+                        # For text-extractable files (DOCX, CSV, TXT…) inject as text
+                        text_attachments.append(
+                            f"=== Attachment: {att.filename} ===\n{att.extracted_text}\n=== End of Attachment ===\n"
+                        )
+                        print(f"[ATTACHMENT RESOLVE] Text attachment injected: {att.filename} ({len(att.extracted_text)} chars)", flush=True)
+                    else:
+                        print(f"[ATTACHMENT RESOLVE] Attachment {att.filename} has no extracted text and is not an image/PDF", flush=True)
+                except Exception as e:
+                    print(f"[ATTACHMENT RESOLVE] Failed to load attachment {att_id}: {e}", flush=True)
+                    logger.warning(f"Failed to load attachment {att_id}: {e}")
+
+        # Merge any text-attachment content into the prompt
+        enriched_content = content
+        if text_attachments:
+            enriched_content = "\n\n".join(text_attachments) + "\n\n" + content
+        print(f"[ATTACHMENT RESOLVE] Enriched content length: {len(enriched_content)}, image blocks: {len(image_blocks)}", flush=True)
         
         # 4. Fetch full history to determine what needs to be fed into the prompt builder
         full_history = await self._history_manager.get_complete_history(session_id)
@@ -156,9 +249,10 @@ class ConversationManager:
             system_prompt=None,
             summary=summary_obj.summary if summary_obj else None,
             recent_history=history_before,
-            current_message=content,
+            current_message=enriched_content,
             memory=filtered_memory,
-            privacy_engine=privacy_engine
+            privacy_engine=privacy_engine,
+            image_blocks=image_blocks if image_blocks else None
         )
         
         # Logging raw user prompt and encrypted prompt sent to LLM
@@ -422,6 +516,25 @@ class ConversationManager:
                     token_usage=usage_schema
                 )
             )
+            
+        # 14. Update Wallet tokens and deduct balance
+        try:
+            from conversation.models.wallet import Wallet
+            from asgiref.sync import sync_to_async
+            import decimal
+            session_user = await sync_to_async(lambda: session.user)()
+            wallet, _ = await Wallet.objects.aget_or_create(user=session_user)
+            
+            # Sum up current prompt and completion tokens
+            wallet.total_tokens_used += llm_response.total_tokens
+            
+            # Deduct cost
+            cost_dec = decimal.Decimal(str(cost))
+            wallet.balance = max(decimal.Decimal("0.00"), wallet.balance - cost_dec)
+            await wallet.asave()
+            logger.info(f"Updated Wallet for user {session_user.email}: added {llm_response.total_tokens} tokens, deducted {cost_dec} balance (new balance: {wallet.balance})")
+        except Exception as wallet_err:
+            logger.error(f"Failed to update Wallet in manager: {wallet_err}", exc_info=True)
             
         return ChatResponse(
             session_id=str(session.session_id),

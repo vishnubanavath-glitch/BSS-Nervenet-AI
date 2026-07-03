@@ -4,6 +4,7 @@ import { useChatStore } from "@/store/chatStore";
 
 export const useSocket = () => {
   const socketRef = useRef<WebSocket | null>(null);
+  const streamingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { accessToken } = useAuthStore();
   const {
     selectedModelId,
@@ -45,6 +46,7 @@ export const useSocket = () => {
             created_at: new Date().toISOString()
           });
           setStreaming(false);
+          if (streamingWatchdogRef.current) clearTimeout(streamingWatchdogRef.current);
           return;
         }
 
@@ -62,6 +64,15 @@ export const useSocket = () => {
             }));
           }
           setStreaming(false);
+          if (streamingWatchdogRef.current) clearTimeout(streamingWatchdogRef.current);
+        } else if (evType === "title_update") {
+          // Title was generated in the background after the main response
+          // Update the sidebar conversation title now that it's ready
+          useChatStore.setState((state) => ({
+            conversations: state.conversations.map((c) =>
+              c.id === conversation_id ? { ...c, title: data.title } : c
+            )
+          }));
         } else if (evType === "stopped") {
           setStreaming(false);
         }
@@ -72,11 +83,15 @@ export const useSocket = () => {
 
     socket.onclose = () => {
       console.log("WebSocket stream disconnected");
+      // Always clear streaming state when socket drops — prevents permanent lock
+      setStreaming(false);
+      if (streamingWatchdogRef.current) clearTimeout(streamingWatchdogRef.current);
     };
 
     socket.onerror = (error) => {
       console.error("WebSocket socket error:", error);
       setStreaming(false);
+      if (streamingWatchdogRef.current) clearTimeout(streamingWatchdogRef.current);
     };
 
     socketRef.current = socket;
@@ -89,7 +104,7 @@ export const useSocket = () => {
     }
   }, []);
 
-  const sendMessage = useCallback((prompt: string, attachmentIds: string[] = [], convId?: string, memoryUpdates?: Record<string, any>) => {
+  const sendMessage = useCallback((prompt: string, attachments: any[] = [], convId?: string, memoryUpdates?: Record<string, any>) => {
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
       console.error("Cannot send message: socket is not open. Reconnecting...");
       connect();
@@ -107,11 +122,26 @@ export const useSocket = () => {
       role: "user",
       content: prompt,
       created_at: new Date().toISOString(),
-      attachments: [] // Attachments list can be synced after REST attachment fetches
+      attachments: attachments.map(a => ({
+        id: a.id,
+        filename: a.filename || a.name || "Attachment",
+        mime_type: a.mime_type || "application/octet-stream",
+        file_size: a.file_size || 0,
+        created_at: new Date().toISOString()
+      }))
     });
 
     setStreaming(true);
 
+    // Safety watchdog: if no 'done' or 'stopped' event arrives within 90s,
+    // force-clear streaming so Enter key is never permanently locked.
+    if (streamingWatchdogRef.current) clearTimeout(streamingWatchdogRef.current);
+    streamingWatchdogRef.current = setTimeout(() => {
+      console.warn("Streaming watchdog fired — force-clearing stuck streaming state");
+      setStreaming(false);
+    }, 90000);
+
+    const attachmentIds = attachments.map(a => a.id);
     const payload = {
       action: "message",
       conversation_id: activeConvId,
@@ -122,6 +152,7 @@ export const useSocket = () => {
       memory_updates: memoryUpdates
     };
 
+    console.log("WebSocket sending message payload:", payload);
     socketRef.current.send(json_stringify(payload));
     return true;
   }, [selectedModelId, selectedProvider, addMessage, setStreaming, connect]);

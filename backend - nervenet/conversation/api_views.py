@@ -14,11 +14,32 @@ from conversation.utils.helpers import generate_uuid
 
 logger = logging.getLogger(__name__)
 
+def sync_wallet_tokens(user, wallet):
+    try:
+        import decimal
+        from conversation.models.session import ChatSession
+        from conversation.models.message import ChatMessage
+        
+        user_sessions = ChatSession.objects.filter(user=user)
+        messages = ChatMessage.objects.filter(session__in=user_sessions)
+        
+        tokens_sum = sum(m.total_tokens or 0 for m in messages)
+        cost_sum = sum(float(m.estimated_cost or 0) for m in messages)
+        
+        if tokens_sum > 0 and wallet.total_tokens_used == 0:
+            wallet.total_tokens_used = tokens_sum
+            wallet.balance = max(decimal.Decimal("0.00"), decimal.Decimal("5.00") - decimal.Decimal(str(cost_sum)))
+            wallet.save()
+            logger.info(f"Self-healed wallet for user {user.email}: synced {tokens_sum} tokens, balance: {wallet.balance}")
+    except Exception as e:
+        logger.error(f"Error self-healing wallet tokens: {e}", exc_info=True)
+
 # --- Wallet & Payments ---
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def wallet_balance_view(request):
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    sync_wallet_tokens(request.user, wallet)
     return Response({
         "balance": float(wallet.balance),
         "total_tokens_used": wallet.total_tokens_used
@@ -82,21 +103,91 @@ def file_upload_view(request):
     )
     
     ext = os.path.splitext(file_obj.name)[1].lower()
-    if ext in [".txt", ".csv", ".log", ".json", ".xml", ".html", ".md"]:
-        try:
-            file_obj.seek(0)
-            text = file_obj.read().decode("utf-8", errors="ignore")
-            attachment.extracted_text = text
-            attachment.save()
-        except Exception as e:
-            logger.warning(f"Failed to extract text from file: {e}")
-            
+    extracted = None
+
+    # After Django saves the file, read from disk (attachment.file.path) — NOT from
+    # file_obj which may be exhausted or moved by Django's FileField handler.
+    try:
+        saved_path = attachment.file.path
+    except Exception:
+        saved_path = None
+
+    if saved_path and os.path.exists(saved_path):
+        # 1. Plain-text types — read directly from disk
+        if ext in [".txt", ".csv", ".log", ".json", ".xml", ".html", ".md", ".py",
+                   ".js", ".ts", ".css", ".yaml", ".yml", ".ini", ".env", ".sh"]:
+            try:
+                with open(saved_path, "rb") as f:
+                    extracted = f.read().decode("utf-8", errors="ignore")
+            except Exception as e:
+                logger.warning(f"Text read failed for {file_obj.name}: {e}")
+
+        # 2. PDF — extract text with pypdf from disk
+        elif ext == ".pdf":
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(saved_path)
+                pages_text = []
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text and page_text.strip():
+                        pages_text.append(page_text.strip())
+                if pages_text:
+                    extracted = "\n\n".join(pages_text)
+                    logger.info(f"PDF extracted {len(pages_text)} pages, {len(extracted)} chars from {file_obj.name}")
+                else:
+                    logger.warning(f"PDF {file_obj.name} has no extractable text (may be image-only/scanned)")
+            except ImportError:
+                logger.warning("pypdf not installed — cannot extract PDF text")
+            except Exception as e:
+                logger.warning(f"PDF text extraction failed for {file_obj.name}: {e}")
+
+        # 3. DOCX — extract with python-docx from disk
+        elif ext in [".docx", ".doc"]:
+            try:
+                from docx import Document
+                doc = Document(saved_path)
+                paras = [p.text for p in doc.paragraphs if p.text.strip()]
+                if paras:
+                    extracted = "\n".join(paras)
+            except ImportError:
+                logger.warning("python-docx not installed — cannot extract DOCX text")
+            except Exception as e:
+                logger.warning(f"DOCX text extraction failed for {file_obj.name}: {e}")
+
+        # 4. Excel — convert to readable text from disk
+        elif ext in [".xlsx", ".xls"]:
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(saved_path, data_only=True)
+                lines = []
+                for sheet in wb.worksheets:
+                    lines.append(f"[Sheet: {sheet.title}]")
+                    for row in sheet.iter_rows(values_only=True):
+                        lines.append("\t".join([str(v) if v is not None else "" for v in row]))
+                if lines:
+                    extracted = "\n".join(lines)
+            except ImportError:
+                logger.warning("openpyxl not installed — cannot extract XLSX text")
+            except Exception as e:
+                logger.warning(f"XLSX text extraction failed for {file_obj.name}: {e}")
+
+    if extracted:
+        attachment.extracted_text = extracted
+        attachment.save()
+        logger.info(f"Attachment {attachment.id} ({file_obj.name}): extracted {len(extracted)} chars")
+    else:
+        logger.info(f"Attachment {attachment.id} ({file_obj.name}): no text extracted (mime={attachment.mime_type})")
+        
     return Response({
         "id": str(attachment.id),
         "filename": attachment.filename,
         "mime_type": attachment.mime_type,
-        "file_size": attachment.file_size
+        "file_size": attachment.file_size,
+        "has_text": bool(extracted)
     }, status=status.HTTP_201_CREATED)
+
+
 
 # --- Conversations/Sessions ---
 def serialize_conversation(session):

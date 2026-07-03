@@ -62,6 +62,7 @@ interface ChatState {
   updateAssistantMessage: (msgId: string, token: string) => void;
   finalizeAssistantMessage: (msgId: string, fullContent: string, telemetry?: any) => void;
   setActiveArtifact: (artifact: { title: string; code: string; language: string; messageId: string } | null) => void;
+  clearStore: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -210,5 +211,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
-  setActiveArtifact: (artifact) => set({ activeArtifact: artifact })
+  setActiveArtifact: (artifact) => set({ activeArtifact: artifact }),
+  clearStore: () => set({
+    conversations: [],
+    currentConversationId: null,
+    messages: [],
+    activeArtifact: null
+  })
 }));

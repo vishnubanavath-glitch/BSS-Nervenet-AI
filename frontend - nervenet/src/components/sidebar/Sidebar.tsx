@@ -55,7 +55,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
   }, [fetchConversations]);
 
   const handleCreate = async () => {
-    await createConversation("New Chat");
+    const newConv = await createConversation("New Chat");
+    selectConversation(newConv.id);
   };
 
   const handleStartEdit = (id: string, currentTitle: string, e: React.MouseEvent) => {
@@ -82,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
   );
 
   return (
-    <aside className="w-80 h-screen flex flex-col dark:bg-[#0f172a] bg-white border-r border-border/40 select-none text-foreground">
+    <aside className="w-80 h-screen flex flex-col dark:bg-[#0a0a0d] bg-white border-r border-border/40 select-none text-foreground">
       {/* Brand Header */}
       <div className="p-4 pb-1 pt-5 flex items-center gap-3 select-none">
         <img src={theme === "dark" ? logo : logoLight} alt="Bharat Smart Services Logo" className="h-7 w-auto object-contain" />

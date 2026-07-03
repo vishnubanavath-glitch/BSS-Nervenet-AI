@@ -10,7 +10,8 @@ class PromptBuilder:
         recent_history: List[ChatMessage],
         current_message: str,
         memory: Dict[str, Any],
-        privacy_engine: Optional[Any] = None
+        privacy_engine: Optional[Any] = None,
+        image_blocks: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Construct the prompt components for the Anthropic Claude API.
         
@@ -54,9 +55,14 @@ class PromptBuilder:
         if privacy_engine:
             content_active = privacy_engine.tokenize_text(content_active)
 
+        if image_blocks:
+            content_active_block = [{"type": "text", "text": content_active}] + image_blocks
+        else:
+            content_active_block = content_active
+
         formatted_messages.append({
             "role": "user",
-            "content": content_active
+            "content": content_active_block
         })
         
         return {

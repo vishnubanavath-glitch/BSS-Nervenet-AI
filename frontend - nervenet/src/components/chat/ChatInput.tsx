@@ -1,19 +1,90 @@
-import React, { useRef, useState } from "react";
-import { Paperclip, Send, Square, X, Mic } from "lucide-react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
+import { Paperclip, Send, Square, X, Mic, MicOff } from "lucide-react";
 import { useChat } from "@/hooks/useChat";
 
 interface ChatInputProps {
-  onSend: (prompt: string, attachmentIds: string[]) => void;
+  onSend: (prompt: string, attachments: any[]) => void;
   onStop: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
   const { isStreaming, uploadAttachment } = useChat();
   const [prompt, setPrompt] = useState("");
-  const [attachments, setAttachments] = useState<{ id: string; name: string }[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micUnavailable, setMicUnavailable] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // Set up SpeechRecognition
+  useEffect(() => {
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      setMicUnavailable(true);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    let finalTranscript = "";
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      finalTranscript = "";
+    };
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      setPrompt(finalTranscript + interim);
+      adjustHeight();
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "not-allowed") {
+        setMicUnavailable(true);
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.abort();
+    };
+  }, []);
+
+  const toggleMic = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+
+    if (isListening) {
+      rec.stop();
+    } else {
+      try {
+        rec.start();
+      } catch (e) {
+        console.error("Mic start failed", e);
+      }
+    }
+  }, [isListening]);
 
   const adjustHeight = () => {
     const tx = textareaRef.current;
@@ -42,13 +113,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
     setUploading(true);
     const targetFile = files[0];
     
-    const fileId = await uploadAttachment(targetFile);
-    if (fileId) {
-      setAttachments((prev) => [...prev, { id: fileId, name: targetFile.name }]);
+    const attachmentData = await uploadAttachment(targetFile);
+    if (attachmentData) {
+      setAttachments((prev) => [...prev, attachmentData]);
     }
     setUploading(false);
     
-    // Clear input value
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -62,12 +132,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
     if (!prompt.trim() && attachments.length === 0) return;
     if (isStreaming) return;
 
-    const attachmentIds = attachments.map((a) => a.id);
-    onSend(prompt, attachmentIds);
+    // Stop mic if still listening
+    if (isListening) recognitionRef.current?.stop();
+
+    onSend(prompt, attachments);
     setPrompt("");
     setAttachments([]);
     
-    // Reset height of textarea
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -95,21 +166,29 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
         </div>
       )}
 
+      {/* Mic listening indicator */}
+      {isListening && (
+        <div className="flex items-center gap-2 mb-2 px-2 text-xs font-semibold text-primary animate-pulse">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+          Listening... speak now
+        </div>
+      )}
+
       {/* Input container */}
-      <div className="relative flex items-end gap-2 p-2 bg-secondary/35 border border-border/60 rounded-2xl focus-within:ring-2 focus-within:ring-primary/40 focus-within:border-primary/45 transition-all">
+      <div className={`relative flex items-end gap-2 p-2 bg-secondary/35 border rounded-2xl focus-within:ring-2 focus-within:ring-primary/40 focus-within:border-primary/45 transition-all ${isListening ? "border-red-500/60" : "border-border/60"}`}>
         {/* Attachment upload trigger */}
         <input
           type="file"
           ref={fileInputRef}
           onChange={handleFileUpload}
           className="hidden"
-          accept=".pdf,.docx,.doc,.txt,.csv,.xlsx,.xls,image/*"
+          accept=".pdf,.docx,.doc,.txt,.csv,.xlsx,.xls,.json,.md,.py,.js,.ts,.yaml,.yml,image/*"
         />
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || isStreaming}
           className="p-2.5 hover:bg-secondary/45 text-muted-foreground hover:text-foreground rounded-xl transition-all disabled:opacity-40"
-          title="Attach file"
+          title="Attach file (PDF, DOCX, images, spreadsheets, code…)"
         >
           {uploading ? (
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -125,19 +204,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
           value={prompt}
           onChange={handleTextareaChange}
           onKeyDown={handleKeyDown}
-          placeholder="Message Nerve net Assistant..."
+          placeholder={isListening ? "Listening…" : "Message Nerve net Assistant..."}
           disabled={isStreaming}
           className="flex-1 max-h-48 py-2.5 px-2 bg-transparent dark:text-white text-gray-800 placeholder-muted-foreground/60 text-sm focus:outline-none resize-none overflow-y-auto leading-relaxed"
         />
 
         {/* Action Controls */}
         <div className="flex items-center gap-1">
-          <button
-            className="p-2.5 text-muted-foreground hover:text-foreground rounded-xl hover:bg-secondary/45 transition-all"
-            title="Voice input"
-          >
-            <Mic className="w-5 h-5" />
-          </button>
+          {!micUnavailable && (
+            <button
+              onClick={toggleMic}
+              disabled={isStreaming}
+              className={`p-2.5 rounded-xl transition-all disabled:opacity-40 ${
+                isListening
+                  ? "text-red-500 bg-red-500/15 hover:bg-red-500/25"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/45"
+              }`}
+              title={isListening ? "Stop voice input" : "Voice input"}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+          )}
           
           {isStreaming ? (
             <button

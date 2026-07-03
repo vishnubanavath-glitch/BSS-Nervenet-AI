@@ -30,6 +30,7 @@ from conversation.admin_views import (
     admin_mcp_view,
     admin_mcp_detail_view,
     admin_mcp_test_view,
+    admin_provider_quota_view,
 )
 
 urlpatterns = [
@@ -70,6 +71,7 @@ urlpatterns = [
     
     path("admin/providers", admin_providers_view, name="admin_providers"),
     path("admin/providers/<str:provider_id>", admin_provider_detail_view, name="admin_provider_detail"),
+    path("admin/providers/<str:provider_id>/quota", admin_provider_quota_view, name="admin_provider_quota"),
     
     path("admin/models", admin_models_view, name="admin_models"),
     path("admin/models/<str:model_id>", admin_model_detail_view, name="admin_model_delete"),
