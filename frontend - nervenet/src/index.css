@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Theme Spec */
+    --background: 210 40% 98%; /* #F8FAFC */
+    --foreground: 222.2 47.4% 11.2%; /* #0F172A */
+
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 222.2 47.4% 11.2%; /* #0F172A */
+
+    --popover: 0 0% 100%; /* #FFFFFF */
+    --popover-foreground: 222.2 47.4% 11.2%; /* #0F172A */
+
+    --primary: 37.4 91.3% 54.9%; /* #F5A623 */
+    --primary-foreground: 0 0% 100%; /* #FFFFFF */
+
+    --secondary: 0 0% 100%; /* #FFFFFF */
+    --secondary-foreground: 217.2 32.6% 17.5%; /* #1E293B */
+
+    --muted: 210 40% 96.1%; /* Elevated Surface #F1F5F9 */
+    --muted-foreground: 215.4 25% 65.1%; /* #94A3B8 */
+
+    --accent: 210 40% 96.1%; /* Elevated Surface #F1F5F9 */
+    --accent-foreground: 222.2 47.4% 11.2%; /* #0F172A */
+
+    --destructive: 0 72.2% 50.6%; /* #DC2626 */
+    --destructive-foreground: 0 0% 100%; /* #FFFFFF */
+
+    --border: 214.3 31.8% 91.4%; /* #E2E8F0 */
+    --input: 214.3 31.8% 91.4%; /* #E2E8F0 */
+    --ring: 37.4 91.3% 54.9%; /* #F5A623 */
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* Dark Theme Spec */
+    --background: 225 38.5% 7.1%; /* #0B0F19 */
+    --foreground: 210 40% 98%; /* #F8FAFC */
+
+    --card: 222 47% 11%; /* #111827 */
+    --card-foreground: 210 40% 98%; /* #F8FAFC */
+
+    --popover: 222 47% 11%; /* #111827 */
+    --popover-foreground: 210 40% 98%; /* #F8FAFC */
+
+    --primary: 37.4 91.3% 54.9%; /* #F5A623 */
+    --primary-foreground: 225 38.5% 7.1%; /* #0B0F19 */
+
+    --secondary: 217.2 32.6% 17.5%; /* #1E293B */
+    --secondary-foreground: 210 40% 98%; /* #F8FAFC */
+
+    --muted: 217.2 32.6% 17.5%; /* Elevated Surface #1E293B */
+    --muted-foreground: 215.4 25% 65.1%; /* #94A3B8 */
+
+    --accent: 217.2 32.6% 17.5%; /* Elevated Surface #1E293B */
+    --accent-foreground: 210 40% 98%; /* #F8FAFC */
+
+    --destructive: 0 84.3% 60.2%; /* #EF4444 */
+    --destructive-foreground: 210 40% 98%; /* #F8FAFC */
+
+    --border: 217.2 25% 26.7%; /* #334155 */
+    --input: 217.2 25% 26.7%; /* #334155 */
+    --ring: 37.4 91.3% 54.9%; /* #F5A623 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    font-family: 'Outfit', sans-serif;
+    @apply bg-background text-foreground;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* Custom Scrollbar for sleek aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.40);
+}
+
+.dark .glass {
+  background: rgba(17, 24, 39, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Streaming token animation cursor */
+.typing-cursor::after {
+  content: "▊";
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 0.8s infinite;
+  color: hsl(var(--primary));
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
