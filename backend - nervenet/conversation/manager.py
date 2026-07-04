@@ -361,8 +361,8 @@ class ConversationManager:
                                         result_text += item.text if hasattr(item, "text") else item.get("text", "")
                                         
                                 encrypted_result = encrypt_tool_result(result_text, privacy_engine)
-                                # print(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}", flush=True)
-                                # logger.info(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}")
+                                 # print(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}", flush=True)
+                                 # logger.info(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}")
                                 tool_results.append({
                                     "type": "tool_result",
                                     "tool_use_id": tool_id,
@@ -466,7 +466,8 @@ class ConversationManager:
             try:
                 updated_summary_text = await self._summary_manager.summarize_history(
                     session_id=session_id,
-                    llm_manager=self._llm_manager
+                    llm_manager=self._llm_manager,
+                    privacy_engine=privacy_engine
                 )
             except Exception as e:
                 logger.error(f"Failed to summarize conversation history: {e}", exc_info=True)

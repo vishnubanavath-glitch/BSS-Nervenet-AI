@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from database_mcp.config import settings
 from database_mcp.exceptions import QueryPlanningError
+from database_mcp.sql.executor import SQLExecutor
 from database_mcp.metadata.cache import metadata_cache, DatabaseMetadata, TableMetadata, ColumnMetadata
 from database_mcp.metadata.loader import MetadataLoader, classify_domain, generate_aliases
 from database_mcp.services.optimizer import SQLOptimizer
@@ -193,3 +194,50 @@ async def test_table_profiler_fallback(test_meta_fixture):
     assert profile["table_name"] == "consumers"
     assert profile["row_count"] == 5000
     assert len(profile["columns"]) == 2
+
+@pytest.mark.asyncio
+async def test_union_cost_estimator_and_metadata(mock_cursor):
+    """Test that UNION query cost uses SUM of rows and metadata queries bypass cost check."""
+    # 1. Test metadata query bypasses EXPLAIN completely
+    await SQLExecutor.estimate_cost("SHOW TABLES")
+    await SQLExecutor.estimate_cost("DESCRIBE consumers")
+    
+    # 2. Test UNION query where two subqueries scan 400 and 500 rows respectively
+    # Threshold in settings is 1000.
+    # Product would be 400 * 500 = 200,000 (which exceeds 1000)
+    # Sum is 400 + 500 = 900 (which is less than 1000, so it should PASS)
+    mock_cursor.execute = AsyncMock()
+    mock_cursor.fetchall = AsyncMock(return_value=[
+        (1, "PRIMARY", "consumers", None, "ALL", None, None, None, None, 400, 100.0, "Using where"),
+        (2, "UNION", "bills", None, "ALL", None, None, None, None, 500, 100.0, "Using where"),
+        (None, "UNION RESULT", "<union1,2>", None, "ALL", None, None, None, None, None, None, None)
+    ])
+    mock_cursor.description = [("id",), ("select_type",), ("table",), ("partitions",), ("type",), ("possible_keys",), ("key",), ("key_len",), ("ref",), ("rows",), ("filtered",), ("Extra",)]
+    
+    from database_mcp.provider.connection import ConnectionProvider
+    await ConnectionProvider.initialize()
+    
+    # This should NOT raise QueryPlanningError because sum (900) < threshold (1000)
+    await SQLExecutor.estimate_cost("SELECT * FROM consumers UNION SELECT * FROM bills")
+
+@pytest.mark.asyncio
+async def test_executor_truncation_bypass_via_metadata(test_meta_fixture, mock_cursor):
+    """Test that SQLExecutor uses metadata row counts for simple SELECT truncation checks, avoiding COUNT(*) queries."""
+    mock_cursor.execute = AsyncMock()
+    rows_returned = [[1, "Consumer 1"]] * 1000
+    mock_cursor.fetchall = AsyncMock(return_value=rows_returned)
+    mock_cursor.description = [("id",), ("name",)]
+    
+    from database_mcp.provider.connection import ConnectionProvider
+    await ConnectionProvider.initialize()
+    
+    res = await SQLExecutor.execute("SELECT * FROM consumers", max_rows=1000)
+    assert res["success"] is True
+    assert res["execution"]["total_matching_rows"] == 5000
+    assert res["execution"]["truncated"] is True
+    
+    # Assert that no COUNT(*) truncation query was executed (which contains "total_matching_rows")
+    calls = mock_cursor.execute.call_args_list
+    assert any("total_matching_rows" in str(c[0][0]) for c in calls) is False
+
+

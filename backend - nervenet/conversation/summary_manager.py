@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from conversation.models.summary import ConversationSummary
 from conversation.models.message import ChatMessage
 from conversation.repositories.summary_repository import SummaryRepository
@@ -41,12 +41,18 @@ class SummaryManager:
         validate_uuid(session_id)
         return await self._summary_repo.delete_summary(session_id)
 
-    async def summarize_history(self, session_id: str, llm_manager) -> Optional[str]:
+    async def summarize_history(
+        self,
+        session_id: str,
+        llm_manager,
+        privacy_engine: Optional[Any] = None
+    ) -> Optional[str]:
         """Condense older history into a consolidated summary block, preserving recent messages.
         
         Args:
             session_id: The UUID of the active session.
             llm_manager: The LLMManager instance used to request the summarization.
+            privacy_engine: Optional privacy engine instance to tokenize raw PII in history before summarization.
         """
         validate_uuid(session_id)
         
@@ -62,8 +68,19 @@ class SummaryManager:
         existing_summary_obj = await self._summary_repo.get_summary(session_id)
         existing_summary = existing_summary_obj.summary if existing_summary_obj else ""
         
-        # 4. Format history
-        history_text = "\n".join([f"{m.role}: {m.content}" for m in to_summarize])
+        # Tokenize existing summary if privacy engine is provided
+        if privacy_engine and existing_summary:
+            existing_summary = privacy_engine.tokenize_text(existing_summary)
+            
+        # 4. Format history, tokenizing user messages if privacy engine is provided
+        history_lines = []
+        for m in to_summarize:
+            role = m.role
+            content = m.content
+            if role == "user" and privacy_engine:
+                content = privacy_engine.tokenize_text(content)
+            history_lines.append(f"{role}: {content}")
+        history_text = "\n".join(history_lines)
         
         # 5. Build prompt
         prompt = (

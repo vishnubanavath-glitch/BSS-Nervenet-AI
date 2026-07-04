@@ -21,7 +21,11 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         username = attrs.get("username")
         
         if email:
-            attrs["username"] = email
+            try:
+                user = User.objects.get(email=email)
+                attrs["username"] = user.username
+            except User.DoesNotExist:
+                attrs["username"] = email
         elif username:
             attrs["username"] = username
             
@@ -113,7 +117,7 @@ def me_view(request):
         "email": user.email,
         "full_name": full_name or user.username,
         "is_active": user.is_active,
-        "is_admin": user.is_staff or user.is_superuser,
+        "is_admin": user.is_superuser,
     }, status=status.HTTP_200_OK)
 
 @api_view(["POST"])

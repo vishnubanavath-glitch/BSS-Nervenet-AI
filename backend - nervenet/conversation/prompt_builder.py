@@ -24,18 +24,27 @@ class PromptBuilder:
         """
         # 1. Base system instruction
         base_system = system_prompt or DEFAULT_SYSTEM_PROMPT
-        system_components = [base_system]
+        system_blocks = [
+            {
+                "type": "text",
+                "text": base_system
+            }
+        ]
         
         # Append Conversation Summary if present
         if summary:
-            system_components.append(f"Summary of previous conversation:\n{summary}")
+            system_blocks.append({
+                "type": "text",
+                "text": f"Summary of previous conversation:\n{summary}"
+            })
             
         # Append Runtime Memory context if present
         if memory:
             memory_str = "\n".join([f"- {k}: {v}" for k, v in memory.items()])
-            system_components.append(f"Session State Variables (Runtime Memory):\n{memory_str}")
-            
-        combined_system = "\n\n".join(system_components)
+            system_blocks.append({
+                "type": "text",
+                "text": f"Session State Variables (Runtime Memory):\n{memory_str}"
+            })
         
         # 2. Format recent history
         formatted_messages = []
@@ -66,6 +75,6 @@ class PromptBuilder:
         })
         
         return {
-            "system": combined_system,
+            "system": system_blocks,
             "messages": formatted_messages
         }

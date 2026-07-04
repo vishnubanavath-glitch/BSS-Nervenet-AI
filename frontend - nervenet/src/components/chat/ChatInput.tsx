@@ -109,16 +109,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
+
     setUploading(true);
     const targetFile = files[0];
-    
+
     const attachmentData = await uploadAttachment(targetFile);
     if (attachmentData) {
       setAttachments((prev) => [...prev, attachmentData]);
     }
     setUploading(false);
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -138,7 +138,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
     onSend(prompt, attachments);
     setPrompt("");
     setAttachments([]);
-    
+
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -215,17 +215,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
             <button
               onClick={toggleMic}
               disabled={isStreaming}
-              className={`p-2.5 rounded-xl transition-all disabled:opacity-40 ${
-                isListening
+              className={`p-2.5 rounded-xl transition-all disabled:opacity-40 ${isListening
                   ? "text-red-500 bg-red-500/15 hover:bg-red-500/25"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/45"
-              }`}
+                }`}
               title={isListening ? "Stop voice input" : "Voice input"}
             >
               {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
           )}
-          
+
           {isStreaming ? (
             <button
               onClick={onStop}
@@ -246,9 +245,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop }) => {
           )}
         </div>
       </div>
-      
+
       <div className="text-[10px] text-center text-muted-foreground/60 font-semibold mt-2 tracking-wide uppercase select-none">
-        Cloud AI can make mistakes. Consider checking important information.
+        Nervenet AI can make mistakes. Consider checking important information.
       </div>
     </div>
   );

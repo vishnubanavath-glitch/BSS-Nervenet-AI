@@ -3,7 +3,12 @@ import logging
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import BasePermission
+
+class IsAdminUser(BasePermission):
+    """Allows access only to superusers."""
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_superuser)
 from rest_framework.response import Response
 from conversation.models import (
     Wallet, ChatMessage, Attachment,
@@ -149,7 +154,7 @@ def admin_users_list_view(request):
             "username": user.username,
             "full_name": full_name or user.username,
             "is_active": user.is_active,
-            "is_admin": user.is_staff or user.is_superuser,
+            "is_admin": user.is_superuser,
             "wallet": {
                 "balance": float(wallet.balance),
                 "total_tokens_used": wallet.total_tokens_used

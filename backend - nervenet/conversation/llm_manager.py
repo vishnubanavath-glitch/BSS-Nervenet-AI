@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, Dict, Any, List, Optional, Union
+from typing import AsyncGenerator, Dict, Any, List, Optional, Union, Tuple
 from anthropic import AsyncAnthropic, APIError
 from conversation.exceptions import LLMRequestException
 from conversation.constants import LLM_MODEL
@@ -22,7 +22,7 @@ class LLMProvider(ABC):
     @abstractmethod
     async def generate(
         self,
-        system: Optional[str],
+        system: Optional[Union[str, List[Dict[str, Any]]]],
         messages: List[Dict[str, Any]],
         max_tokens: int = 4096,
         temperature: float = 0.7,
@@ -33,12 +33,53 @@ class LLMProvider(ABC):
     @abstractmethod
     async def generate_stream(
         self,
-        system: Optional[str],
+        system: Optional[Union[str, List[Dict[str, Any]]]],
         messages: List[Dict[str, str]],
         max_tokens: int = 4096,
         temperature: float = 0.7
     ) -> AsyncGenerator[str, None]:
         pass
+
+def prepare_caching_params(
+    system: Optional[Union[str, List[Dict[str, Any]]]],
+    tools: Optional[List[Dict[str, Any]]]
+) -> Tuple[Optional[List[Dict[str, Any]]], Optional[List[Dict[str, Any]]]]:
+    """Helper to transform system parameter to blocks list and attach cache_control to system and tools."""
+    # 1. Normalize system parameter to blocks list
+    system_blocks = []
+    if system:
+        if isinstance(system, str):
+            system_blocks = [
+                {
+                    "type": "text",
+                    "text": system
+                }
+            ]
+        elif isinstance(system, list):
+            # Deepish copy to avoid mutating inputs
+            system_blocks = [dict(b) for b in system]
+        else:
+            system_blocks = [
+                {
+                    "type": "text",
+                    "text": str(system)
+                }
+            ]
+            
+    # Attach cache_control to the first system block (static base system prompt)
+    if system_blocks:
+        system_blocks[0] = dict(system_blocks[0])
+        system_blocks[0]["cache_control"] = {"type": "ephemeral"}
+        
+    # 2. Normalize and cache tools
+    tools_blocks = None
+    if tools:
+        tools_blocks = [dict(t) for t in tools]
+        # Attach cache_control to the last tool definition
+        tools_blocks[-1] = dict(tools_blocks[-1])
+        tools_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+        
+    return system_blocks or None, tools_blocks or None
 
 _anthropic_client: Optional[AsyncAnthropic] = None
 
@@ -53,7 +94,7 @@ class AnthropicLLMProvider(LLMProvider):
 
     async def generate(
         self,
-        system: Optional[str],
+        system: Optional[Union[str, List[Dict[str, Any]]]],
         messages: List[Dict[str, Any]],
         max_tokens: int = 4096,
         temperature: float = 0.5,
@@ -63,14 +104,17 @@ class AnthropicLLMProvider(LLMProvider):
         delay = 1.0
         for attempt in range(retries):
             try:
+                system_blocks, tools_blocks = prepare_caching_params(system, tools)
                 params = {
                     "model": LLM_MODEL,
                     "max_tokens": max_tokens,
-                    "system": system or "",
-                    "messages": messages
+                    "messages": messages,
+                    "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}
                 }
-                if tools:
-                    params["tools"] = tools
+                if system_blocks:
+                    params["system"] = system_blocks
+                if tools_blocks:
+                    params["tools"] = tools_blocks
 
                 response = await self.client.messages.create(**params)
                 
@@ -96,18 +140,23 @@ class AnthropicLLMProvider(LLMProvider):
 
     async def generate_stream(
         self,
-        system: Optional[str],
+        system: Optional[Union[str, List[Dict[str, Any]]]],
         messages: List[Dict[str, str]],
         max_tokens: int = 4096,
         temperature: float = 0.7
     ) -> AsyncGenerator[str, None]:
         try:
-            async with self.client.messages.stream(
-                model=LLM_MODEL,
-                max_tokens=max_tokens,
-                system=system or "",
-                messages=messages
-            ) as stream:
+            system_blocks, _ = prepare_caching_params(system, None)
+            params = {
+                "model": LLM_MODEL,
+                "max_tokens": max_tokens,
+                "messages": messages,
+                "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}
+            }
+            if system_blocks:
+                params["system"] = system_blocks
+                
+            async with self.client.messages.stream(**params) as stream:
                 async for text in stream.text_stream:
                     yield text
         except Exception as e:

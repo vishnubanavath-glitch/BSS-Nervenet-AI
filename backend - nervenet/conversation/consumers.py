@@ -85,6 +85,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             
             # 2. Run the full message processing loop
             # This executes privacy engine, Claude calls, MCP tool calls, database validation, etc.
+            import time
+            t_start = time.perf_counter()
             chat_response: ChatResponse = await manager.process_message(
                 session_id=conversation_id,
                 content=prompt,
@@ -92,20 +94,33 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 memory_updates=memory_updates,
                 attachment_ids=attachment_ids
             )
+            t_process_end = time.perf_counter()
+            process_dur_ms = (t_process_end - t_start) * 1000
+            print(f"[WS PROFILE] manager.process_message took {process_dur_ms:.2f}ms", flush=True)
             
             content = chat_response.response_content
             telemetry = chat_response.token_usage
             
             # Fetch updated session to capture LLM-generated title
+            t_title_start = time.perf_counter()
             try:
                 session_obj = await ChatSession.objects.aget(session_id=conversation_id)
                 session_title = session_obj.title
             except Exception:
                 session_title = None
-
+            t_title_end = time.perf_counter()
+            title_dur_ms = (t_title_end - t_title_start) * 1000
+            print(f"[WS PROFILE] Fetching session title took {title_dur_ms:.2f}ms", flush=True)
+ 
             # 3. Stream the response content token-by-token (simulated stream for visual smooth rendering)
-            # We stream chunks of 3-7 characters with a tiny sleep to simulate streaming.
-            chunk_size = 5
+            # Throttle stream chunks to 15 updates at 100ms intervals.
+            # This prevents React from choking on excessive DOM re-renders while keeping typing smooth.
+            target_time_s = 1.5
+            delay_s = 0.100 # 100ms delay
+            max_chunks = int(target_time_s / delay_s) # 15 chunks
+            chunk_size = max(1, (len(content) + max_chunks - 1) // max_chunks)
+            
+            t_stream_start = time.perf_counter()
             for i in range(0, len(content), chunk_size):
                 chunk = content[i:i + chunk_size]
                 await self.send_json({
@@ -114,9 +129,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     "message_id": assistant_message_id,
                     "token": chunk
                 })
-                await asyncio.sleep(0.015) # 15ms typing delay
+                await asyncio.sleep(delay_s)
+
+            t_stream_end = time.perf_counter()
+            stream_dur_ms = (t_stream_end - t_stream_start) * 1000
+            print(f"[WS PROFILE] Simulated streaming loop took {stream_dur_ms:.2f}ms", flush=True)
             
             # 4. Finalize the message stream
+            t_final_start = time.perf_counter()
             await self.send_json({
                 "event": "done",
                 "conversation_id": conversation_id,
@@ -130,6 +150,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     "cost": float(telemetry.estimated_cost)
                 }
             })
+            t_final_end = time.perf_counter()
+            final_dur_ms = (t_final_end - t_final_start) * 1000
+            print(f"[WS PROFILE] Finalize event took {final_dur_ms:.2f}ms", flush=True)
+            print(f"[WS PROFILE] Total WS turn duration: {(time.perf_counter() - t_start)*1000:.2f}ms", flush=True)
+
             
         except Exception as e:
             logger.error(f"Error during message streaming: {e}", exc_info=True)

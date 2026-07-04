@@ -161,14 +161,14 @@ export const ChatContainer: React.FC = () => {
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleSendPrompt = async (prompt: string, attachments: any[]) => {
     if (isLimitReached) return;
-    
+
     const memoryUpdates: Record<string, any> = {};
     if (memKey.trim() && memValue.trim()) {
       memoryUpdates[memKey.trim()] = memValue.trim();
       setMemKey("");
       setMemValue("");
     }
-    
+
     const activeId = currentConversationId;
     const finalMemoryUpdates = Object.keys(memoryUpdates).length ? memoryUpdates : undefined;
 
@@ -232,8 +232,8 @@ export const ChatContainer: React.FC = () => {
   // Limit bar colour: green → amber → red
   const limitBarColor =
     limitPercent >= 90 ? "bg-red-500" :
-    limitPercent >= 70 ? "bg-amber-500" :
-    "bg-emerald-500";
+      limitPercent >= 70 ? "bg-amber-500" :
+        "bg-emerald-500";
 
   return (
     <div className="flex-1 h-screen flex bg-background select-text overflow-hidden">
@@ -286,13 +286,13 @@ export const ChatContainer: React.FC = () => {
                 <Download className="w-3.5 h-3.5" /> Export
               </button>
             )}
-            {currentConversationId && (
+            {/* {currentConversationId && (
               <button onClick={() => setShowInspector(!showInspector)}
                 className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${showInspector ? "text-primary" : "text-white"}`}
                 title="Toggle Session Inspector">
                 <Brain className="w-3.5 h-3.5" /> Inspector
               </button>
-            )}
+            )} */}
             {currentConversationId && (
               <button onClick={() => selectConversation(null)}
                 className="text-xs font-semibold text-muted-foreground hover:text-white transition-colors">
@@ -375,9 +375,8 @@ export const ChatContainer: React.FC = () => {
       </div>
 
       {/* ── Context & Memory Inspector Panel ───────────────────────── */}
-      {showInspector && (
+      {/* {showInspector && (
         <aside className="w-80 h-full dark:bg-[#0d0d11] bg-card flex flex-col overflow-hidden animate-in slide-in-from-right duration-200 z-10 shrink-0 border-l border-border/40">
-          {/* Panel Header */}
           <div className="p-4 border-b border-border/30 flex items-center justify-between shrink-0 select-none">
             <span className="text-xs font-bold dark:text-white text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
               🧠 Context & Memory
@@ -387,9 +386,7 @@ export const ChatContainer: React.FC = () => {
             </button>
           </div>
           
-          {/* Scrollable details */}
           <div className="flex-1 overflow-y-auto p-4 space-y-5 select-none scrollbar-thin">
-            {/* Session Info card */}
             <div className="space-y-1.5">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wider block">Session Info</span>
               <div className="p-3 bg-secondary/10 border border-border/40 rounded-xl space-y-1.5 text-[11px] font-medium dark:text-gray-300 text-gray-600">
@@ -398,7 +395,6 @@ export const ChatContainer: React.FC = () => {
               </div>
             </div>
             
-            {/* Active Memory Context */}
             <div className="space-y-1.5">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wider block">Temporary Memory</span>
               <pre className="p-3 bg-secondary/15 rounded-xl border border-border/50 text-[10px] text-emerald-400 font-mono overflow-x-auto max-h-48 scrollbar-thin">
@@ -406,7 +402,6 @@ export const ChatContainer: React.FC = () => {
               </pre>
             </div>
             
-            {/* Inject Memory input form */}
             <div className="space-y-2">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wider block">Inject Memory Update</span>
               <div className="space-y-1.5">
@@ -430,7 +425,6 @@ export const ChatContainer: React.FC = () => {
               </div>
             </div>
             
-            {/* Summary */}
             <div className="space-y-1.5">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wider block">Conversation Summary</span>
               <div className="p-3 bg-secondary/10 border border-border/40 rounded-xl text-xs text-muted-foreground font-medium leading-relaxed italic">
@@ -439,7 +433,7 @@ export const ChatContainer: React.FC = () => {
             </div>
           </div>
         </aside>
-      )}
+      )} */}
       {/* ── TOP UP WALLET MODAL ─────────────────────────────────────── */}
       {showTopUp && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
@@ -452,7 +446,7 @@ export const ChatContainer: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="space-y-1">
               <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider block">Select Amount to Add</span>
               <div className="grid grid-cols-3 gap-2">
@@ -460,11 +454,10 @@ export const ChatContainer: React.FC = () => {
                   <button
                     key={amt}
                     onClick={() => setTopUpAmount(amt)}
-                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${
-                      topUpAmount === amt
+                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${topUpAmount === amt
                         ? "bg-primary border-primary text-white"
                         : "bg-secondary/20 border-border/60 hover:bg-secondary/40 text-gray-300"
-                    }`}
+                      }`}
                   >
                     ${amt}
                   </button>
@@ -475,11 +468,10 @@ export const ChatContainer: React.FC = () => {
                   <button
                     key={amt}
                     onClick={() => setTopUpAmount(amt)}
-                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${
-                      topUpAmount === amt
+                    className={`py-2 text-xs font-bold rounded-xl border transition-all ${topUpAmount === amt
                         ? "bg-primary border-primary text-white"
                         : "bg-secondary/20 border-border/60 hover:bg-secondary/40 text-gray-300"
-                    }`}
+                      }`}
                   >
                     ${amt}
                   </button>

@@ -30,12 +30,11 @@ def test_prompt_builder():
     assert "messages" in result
     
     # Assert system prompt incorporates all aspects
-    system_content = result["system"]
-    assert "You are a specialized math solver." in system_content
-    assert "Summary of previous conversation:" in system_content
-    assert "User said hello." in system_content
-    assert "Session State Variables (Runtime Memory):" in system_content
-    assert "- preferred_subject: Algebra" in system_content
+    system_blocks = result["system"]
+    assert len(system_blocks) == 3
+    assert system_blocks[0] == {"type": "text", "text": "You are a specialized math solver."}
+    assert system_blocks[1] == {"type": "text", "text": "Summary of previous conversation:\nUser said hello."}
+    assert system_blocks[2] == {"type": "text", "text": "Session State Variables (Runtime Memory):\n- preferred_subject: Algebra"}
     
     # Assert messages follow chronological Claude parameters
     msg_list = result["messages"]
