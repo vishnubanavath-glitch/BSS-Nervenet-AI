@@ -184,11 +184,11 @@ nervenet/
    OPENAI_API_KEY=your-openai-api-key
 
    # External Production MySQL Database Config
-   DB_HOST=13.235.168.247
-   DB_PORT=3306
-   DB_USER=remote_root
+   DB_HOST=YOUR_DB_HOST
+   DB_PORT=YOUR_PORT
+   DB_USER=YOUR_DB_USER
    DB_PASSWORD=your-database-password
-   DB_NAME=analytics_demo
+   DB_NAME=YOUR_DB_NAME
    ```
 
 4. **Run Migrations & Launch Server:**
