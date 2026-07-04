@@ -1,6 +1,6 @@
 # Nervenet System Architecture & Design
 
-This document describes the updated system design patterns, component relationships, data flow sequences, and database schemas of the integrated Nervenet platform.
+This document describes the system design patterns, component relationships, data flow sequences, and database schemas of the integrated Nervenet platform.
 
 ---
 
@@ -69,69 +69,110 @@ graph TD
 
 ---
 
-## 2. Privacy Anonymization & Tool Calling sequence
+## 2. Conversation Engine Component Architecture
 
-All user queries containing sensitive customer data (mobile numbers, UIDs, etc.) are homomorphically tokenized using the backend `PrivacyEngine` before prompt delivery to Claude.
+The `conversation` module within the Django Core Engine encapsulates the AI interaction logic, orchestrating session tracking, token counts, LLM integrations, and PII masking.
+
+| Component Name | File | Primary Responsibility |
+| :--- | :--- | :--- |
+| **`ConversationManager`** | [`manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/manager.py) | The core orchestrator. Coordinates the message processing pipeline, tool execution loops, DB updates, wallet charges, and egress decryption. |
+| **`PrivacyEngine`** | [`privacy_engine.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/privacy_engine.py) | Stateful PII tokenizer. Employs regex to mask phone numbers/UIDs, and handles record-level mapping of DB query outputs. |
+| **`SessionManager`** | [`session_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/session_manager.py) | Creates, updates, loads, and manages lifetimes of user chat sessions. |
+| **`HistoryManager`** | [`history_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/history_manager.py) | Manages sequential storage and retrieval of raw/encrypted messages in the local SQLite DB. |
+| **`MemoryManager`** | [`memory_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/memory_manager.py) | Persists transient workspace metadata, including the runtime `_privacy_state` token map. |
+| **`SummaryManager`** | [`summary_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/summary_manager.py) | Runs incremental summarization of older chat history when context size exceeds thresholds. |
+| **`PromptBuilder`** | [`prompt_builder.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/prompt_builder.py) | Constructs the structured JSON payloads for the Anthropic Claude API, injecting system instructions, active memory, summaries, and text/image inputs. |
+| **`LLMManager`** | [`llm_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/llm_manager.py) | Simple provider wrapper mapping model settings and invoking raw completions. |
+| **`TokenManager`** | [`token_manager.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/token_manager.py) | Calculates financial costs using actual API token metrics and estimates window constraints. |
+| **`TitleGenerator`** | [`title_generator.py`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/title_generator.py) | Compiles the initial chat turns to generate a contextually relevant title for empty sessions. |
+
+---
+
+## 3. Dynamic Message Processing Pipeline
+
+The dynamic flow of a user message through `ConversationManager.process_message()` progresses through the following sequential phases:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User Chat Client
-    participant React as React (Zustand & WebSocket)
-    participant Django as Django ASGI Engine
-    participant Privacy as Privacy Engine
-    participant Claude as Claude LLM API
-    participant MCP as Database MCP Server (Subprocess)
-    participant MySQL as MySQL Database
+    actor User as User Client
+    participant Manager as ConversationManager
+    participant Privacy as PrivacyEngine
+    participant LLM as Claude LLM API
+    participant MCP as Database MCP Server
+    participant DB as SQLite / MySQL DB
 
-    User->>React: Sends: "Show energy history for consumer 5912345"
-    React->>Django: Sends WS Frame: { action: 'message', prompt: '...' }
-    
-    activate Django
-    Note over Django: Load Session Memory & _privacy_state
-    Django->>Privacy: Mask raw prompt: "5912345"
-    Privacy-->>Django: Returns anonymized: "Show energy history for <//UID-abc123xyz456//>"
-    
-    Django->>Claude: Invoke LLM (with anonymized history & prompt)
-    activate Claude
-    
-    Claude-->>Django: Suggests Tool: execute_sql(sql="SELECT * FROM billing_transactions WHERE consumer_no = '<//UID-abc123xyz456//>'")
-    Note over Django: Intercept Tool Call Parameters
-    
-    Django->>Privacy: Detokenize parameters: "<//UID-abc123xyz456//>"
-    Privacy-->>Django: Returns raw value: "5912345"
-    
-    Django->>MCP: Call execute_sql(sql="SELECT * FROM ... WHERE consumer_no = '5912345'") over stdin/stdout
-    activate MCP
-    Note over MCP: Validate read-only SQL
-    MCP->>MySQL: Run Query
-    activate MySQL
-    MySQL-->>MCP: Returns raw JSON rows: [{"consumer_no": "5912345", "billing_amt": 150.0}]
-    deactivate MySQL
-    
-    MCP->>Privacy: Encrypt result row fields
-    Privacy-->>MCP: Returns: [{"consumer_no": "<//UID-abc123xyz456//>", "billing_amt": 150.0}]
-    MCP-->>Django: Return encrypted JSON string over stdout
-    deactivate MCP
+    User->>Manager: Sends prompt with optional attachment_ids
+    activate Manager
+    Manager->>DB: Load Session, History, and Memory
+    DB-->>Manager: Return models & _privacy_state
+    Manager->>Privacy: Instantiate & load _privacy_state
 
-    Django->>Claude: Feed anonymized tool results back to LLM context
+    opt Processing Attachments (e.g. Images, PDFs)
+        Manager->>DB: Fetch attachment objects
+        DB-->>Manager: Return file references
+        Note over Manager: Base64 encode images / Extract text from PDFs
+    end
+
+    Manager->>Privacy: Mask sensitive patterns (Mobile, UID) in prompt
+    Privacy-->>Manager: Return anonymized prompt (<//UID-abc123xyz//>)
+    Manager->>Manager: Build Prompt payload (System + Memory + Summary + Prompt)
+
+    loop LLM Turn Loop (Max 10 turns)
+        Manager->>LLM: Generate response (Anonymized payload & tools)
+        LLM-->>Manager: Return Content Blocks (Text or Tool Use)
+        
+        break No Tool Calls (Final Answer Received)
+            Note over Manager: Break loop with final text response
+        end
+
+        opt Tool Call Interception (e.g., execute_sql)
+            Note over Manager: Decrypt PII tokens in tool parameters
+            Manager->>Privacy: Detokenize tool parameters
+            Privacy-->>Manager: Return raw SQL/Query string
+            
+            Manager->>MCP: call_tool(tool_name, arguments)
+            activate MCP
+            Note over MCP: Verify read-only SQL (SELECT only)
+            MCP->>DB: Run query on production MySQL
+            DB-->>MCP: Return raw rows
+            
+            MCP->>Privacy: Encrypt sensitive fields in result rows
+            Privacy-->>MCP: Return anonymized JSON rows
+            MCP-->>Manager: Return encrypted tool output payload
+            deactivate MCP
+            
+            Manager->>Manager: Append Tool output to LLM context
+        end
+    end
+
+    Manager->>Privacy: Save & dump token state to session memory
+    Manager->>DB: Save User and Assistant messages to history (SQLite)
+    Manager->>DB: Update User Wallet tokens & deduct balance
     
-    Claude-->>Django: Returns Response: "Consumer <//UID-abc123xyz456//> has a billing amount of $150.0"
-    deactivate Claude
+    opt Check summarization threshold
+        Manager->>Manager: Trigger history summarization if tokens exceed limits
+    end
     
-    Django->>Django: Write anonymized history to SQLite Database
-    Django->>Privacy: Detokenize final text
-    Privacy-->>Django: Returns: "Consumer 5912345 has a billing amount of $150.0"
-    
-    Django-->>React: Stream text token-by-token (Done event has telemetry metadata)
-    deactivate Django
-    
-    React->>User: Displays text & renders telemetry token usage + pricing costs
+    Manager->>Privacy: Egress Decrypt: Detokenize final LLM response text
+    Privacy-->>Manager: Return plain-text response
+    Manager-->>User: Return ChatResponse with plain-text & telemetry
+    deactivate Manager
 ```
+
+### Key Stages of the Pipeline:
+1. **Session & Memory Hydration**: Loads session metadata. De-serializes the stateful `_privacy_state` mapping dictionary into the `PrivacyEngine` instance, ensuring that previously tokenized items retain identical mappings across chat turns.
+2. **Attachment Handling**: Identifies attachment types. 
+   - *Images*: Base64 encoded and attached as Claude Vision API blocks.
+   - *PDFs*: Scrapes text directly. For scanned or image-only PDFs, extracts pages as image blocks.
+   - *Structured Documents (CSV, DOCX, etc.)*: Injects extracted text inline within the prompt context.
+3. **Anonymization & Tokenization**: User inputs are run through regex engines detecting 10-digit mobile numbers and 7/11-digit customer IDs, substituting them with cryptographically unique tokens (e.g. `<//PHONE-a1b2c3d4//>`).
+4. **Tool-Call Interception**: Intercepts generated tool inputs. Replaces tokenized parameters back with raw values immediately before passing them to the Database MCP. Upon completion, encrypts the database rows before feeding them back to the LLM.
+5. **Session Cost Allocation**: Accumulates the prompt and completion tokens, converts them into financial values based on Claude pricing models, and deducts the expense from the user's active wallet balance.
 
 ---
 
-## 3. Database Schema Mappings
+## 4. Database Schema Mappings
 
 The MCP server connects to the `analytics_demo` MySQL database containing 7 tables:
 
@@ -142,3 +183,14 @@ The MCP server connects to the `analytics_demo` MySQL database containing 7 tabl
 5. **`dtr_master`**: Distribution Transformer Stations.
 6. **`meter_reader_master`**: Meter readers (PII: `meter_reader_name`, `mobile_no`).
 7. **`hierarchy`**: Circles, divisions, subdivisions, and sections defining company organizational hierarchy.
+
+---
+
+## 5. Known Design Constraints & Vulnerabilities
+
+### PII Leak via Summarization Pipeline
+There is an identified security gap in the current conversation summarization logic:
+- **Location**: [`summary_manager.py:L65-77`](file:///e:/BSS/nervenet/backend%20-%20nervenet/conversation/summary_manager.py#L65-L77)
+- **Vulnerability**: The SQLite database stores user messages in plain-text. When `SummaryManager.summarize_history()` gathers historical messages to build a consolidated summary, it reads the plain-text message logs and submits them directly to the LLM summarizer without running them through the privacy tokenization filter.
+- **Architectural Resolution**: Update the summarizer script to execute `privacy_engine.tokenize_text()` on the history content block prior to submission, or execute the summarization context on a pre-masked history pipeline.
+

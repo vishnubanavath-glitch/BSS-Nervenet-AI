@@ -461,8 +461,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Usage metrics */}
-        {message.metadata?.telemetry && (
+        {/* Usage metrics hidden as requested */}
+        {/* message.metadata?.telemetry && (
           <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted-foreground/50 select-none pt-2">
             <span className="uppercase tracking-wide">
               ↑ {message.metadata.telemetry.prompt_tokens} in
@@ -481,7 +481,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               </span>
             )}
           </div>
-        )}
+        ) */}
       </div>
     </div>
   );

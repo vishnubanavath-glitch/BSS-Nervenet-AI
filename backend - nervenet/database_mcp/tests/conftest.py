@@ -5,11 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 @pytest.fixture(autouse=True)
 def mock_db_settings(monkeypatch):
     """Set env variables for test configuration."""
-    monkeypatch.setenv("DB_HOST", "localhost")
-    monkeypatch.setenv("DB_PORT", "3306")
-    monkeypatch.setenv("DB_USER", "test_user")
-    monkeypatch.setenv("DB_PASSWORD", "test_pass")
-    monkeypatch.setenv("DB_NAME", "analytics_demo")
+    from database_mcp.config import settings
+    settings.db_host = "localhost"
+    settings.db_port = 3306
+    settings.db_user = "test_user"
+    settings.db_password = "test_pass"
+    settings.db_name = "analytics_demo"
+    settings.query_cost_limit = 0.0
+    settings.enable_auto_limit = False
 
 @pytest.fixture
 def mock_cursor():

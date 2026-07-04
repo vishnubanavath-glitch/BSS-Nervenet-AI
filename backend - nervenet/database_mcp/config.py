@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     db_pool_max_size: int = Field(default=10, alias="DB_POOL_MAX_SIZE")
     db_timeout: float = Field(default=30.0, alias="DB_TIMEOUT")
     max_rows_returned: int = Field(default=1000, alias="MAX_ROWS_RETURNED")
+    
+    query_cost_limit: float = Field(default=100000.0, alias="QUERY_COST_LIMIT")
+    profiler_cache_ttl: int = Field(default=3600, alias="PROFILER_CACHE_TTL")
+    max_joins_allowed: int = Field(default=3, alias="MAX_JOINS_ALLOWED")
+    enable_auto_limit: bool = Field(default=True, alias="ENABLE_AUTO_LIMIT")
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),

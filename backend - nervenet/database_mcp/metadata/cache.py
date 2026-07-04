@@ -17,6 +17,11 @@ class TableMetadata(BaseModel):
     primary_keys: List[str] = Field(default_factory=list)
     foreign_keys: List[Dict[str, str]] = Field(default_factory=list)  # list of key mappings
     description: Optional[str] = None
+    aliases: List[str] = Field(default_factory=list)
+    row_count: int = 0
+    data_length: int = 0
+    index_length: int = 0
+    update_time: Optional[str] = None
 
 class DatabaseMetadata(BaseModel):
     """Overall schema metadata of the database."""
@@ -24,6 +29,11 @@ class DatabaseMetadata(BaseModel):
     tables: Dict[str, TableMetadata] = Field(default_factory=dict)
     relationships: List[Dict[str, Any]] = Field(default_factory=list)
     summary: str = ""
+    metadata_version: int = 1
+    schema_version: str = ""
+    cache_timestamp: str = ""
+    last_refresh: str = ""
+    business_domains: Dict[str, List[str]] = Field(default_factory=dict)
 
 class MetadataCache:
     """In-memory cache for storing the loaded schema metadata."""
