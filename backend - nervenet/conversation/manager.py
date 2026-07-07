@@ -259,8 +259,8 @@ class ConversationManager:
         encrypted_prompt = prompt_payload["messages"][-1]["content"]
         # print(f"\n[PRIVACY DEBUG] 1. user prompt: {content}", flush=True)
         # print(f"[PRIVACY DEBUG] 2. encrypted prompt llm recieves: {encrypted_prompt}", flush=True)
-        # logger.info(f"[PRIVACY DEBUG] 1. user prompt: {content}")
-        # logger.info(f"[PRIVACY DEBUG] 2. encrypted prompt llm recieves: {encrypted_prompt}")
+        logger.info(f"[PRIVACY DEBUG] 1. user prompt: {content}")
+        logger.info(f"[PRIVACY DEBUG] 2. encrypted prompt llm recieves: {encrypted_prompt}")
         
         # 7. Call LLM with MCP tool-calling loop
         python_cmd = sys.executable or "python"
@@ -349,7 +349,7 @@ class ConversationManager:
 
                             decrypted_args = decrypt_tool_args(tool_input, privacy_engine)
                             # print(f"[PRIVACY DEBUG] 3. decrypted prompt mcp recieved: {decrypted_args}", flush=True)
-                            # logger.info(f"[PRIVACY DEBUG] 3. decrypted prompt mcp recieved: {decrypted_args}")
+                            logger.info(f"[PRIVACY DEBUG] 3. decrypted prompt mcp recieved: {decrypted_args}")
                             
                             try:
                                 mcp_result = await mcp_session.call_tool(tool_name, arguments=decrypted_args)
@@ -361,8 +361,8 @@ class ConversationManager:
                                         result_text += item.text if hasattr(item, "text") else item.get("text", "")
                                         
                                 encrypted_result = encrypt_tool_result(result_text, privacy_engine)
-                                 # print(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}", flush=True)
-                                 # logger.info(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}")
+                                # print(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}", flush=True)
+                                logger.info(f"[PRIVACY DEBUG] 4. encrypted response mcp returned to llm: {encrypted_result}")
                                 tool_results.append({
                                     "type": "tool_result",
                                     "tool_use_id": tool_id,
@@ -393,7 +393,7 @@ class ConversationManager:
 
         llm_response = LLMResponse(final_text, prompt_tokens, completion_tokens)
         # print(f"[PRIVACY DEBUG] 5. encrypted response llm gives before decrypt: {llm_response.content}", flush=True)
-        # logger.info(f"[PRIVACY DEBUG] 5. encrypted response llm gives before decrypt: {llm_response.content}")
+        logger.info(f"[PRIVACY DEBUG] 5. encrypted response llm gives before decrypt: {llm_response.content}")
         
         # Save updated privacy engine state back to session memory
         memory["_privacy_state"] = privacy_engine.dump_state()
