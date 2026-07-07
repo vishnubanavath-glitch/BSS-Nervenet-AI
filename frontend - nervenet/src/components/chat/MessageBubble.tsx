@@ -7,6 +7,7 @@ import "katex/dist/katex.min.css";
 import mermaid from "mermaid";
 import { Copy, Check, Sparkles, Terminal, Eye, Code, RotateCcw, Pencil, AlertTriangle } from "lucide-react";
 import { Message } from "@/store/chatStore";
+import { VegaChart } from "./VegaChart";
 
 // Init mermaid once
 mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
@@ -17,6 +18,7 @@ interface MessageBubbleProps {
   isStreaming: boolean;
   onRegenerate?: () => void;
   onEditSubmit?: (newContent: string) => void;
+  onSendMessage?: (prompt: string, attachments: any[]) => void;
 }
 
 /* ─── Mermaid Diagram ──────────────────────────────────────────────── */
@@ -196,7 +198,7 @@ export const InlineArtifact: React.FC<{ code: string; language: string }> = ({ c
 
 /* ─── MessageBubble ────────────────────────────────────────────────── */
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isLast, isStreaming, onRegenerate, onEditSubmit
+  message, isLast, isStreaming, onRegenerate, onEditSubmit, onSendMessage
 }) => {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -209,14 +211,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const processedContent = React.useMemo(() => {
     if (!isLast || !isStreaming || isUser) return message.content;
     let result = message.content;
-    // Replace fully-closed visual code blocks (html/svg/mermaid) with a sentinel
+    // Replace fully-closed visual code blocks (html/svg/mermaid/vega/vegalite) with a sentinel
     result = result.replace(
-      /```(html|svg|mermaid)[\s\S]*?```/gi,
+      /```(html|svg|mermaid|vega|vegalite)[\s\S]*?```/gi,
       PREVIEW_SENTINEL
     );
     // Replace still-open (unclosed) visual blocks — from the ``` to end of string
     result = result.replace(
-      /```(html|svg|mermaid)[\s\S]*$/i,
+      /```(html|svg|mermaid|vega|vegalite)[\s\S]*$/i,
       PREVIEW_SENTINEL
     );
     return result;
@@ -404,6 +406,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   );
 
                   const lang = match ? match[1].toLowerCase() : "";
+
+                  // Vega-Lite visual charts
+                  const isVegaSpec = (lang === "vega" || lang === "vegalite" || 
+                                     (lang === "json" && codeString.includes("vega.github.io/schema/vega")));
+                  if (isVegaSpec) {
+                    if (isLast && isStreaming) {
+                      return (
+                        <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
+                          <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                          <span className="text-xs font-semibold text-muted-foreground animate-pulse">
+                            Rendering live chart...
+                          </span>
+                        </div>
+                      );
+                    }
+                    return <VegaChart specString={codeString} onSendMessage={onSendMessage} />;
+                  }
 
                   // Interactive visual artifacts
                   if (lang === "html" || lang === "svg" || lang === "mermaid") {

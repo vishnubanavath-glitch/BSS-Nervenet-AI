@@ -334,6 +334,7 @@ export const ChatContainer: React.FC = () => {
                     isStreaming={isStreaming}
                     onRegenerate={index === messages.length - 1 ? handleRegenerate : undefined}
                     onEditSubmit={message.role === "user" ? (newContent) => handleEditSubmit(message.id, newContent) : undefined}
+                    onSendMessage={handleSendPrompt}
                   />
                 ))
               )}

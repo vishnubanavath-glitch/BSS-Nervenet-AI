@@ -215,6 +215,20 @@ def conversations_list_create_view(request):
         title = request.data.get("title", "")
         if title == "New Chat":
             title = ""
+            
+        # Reuse existing active session if it is empty (zero messages)
+        active_sessions = ChatSession.objects.filter(
+            user=request.user,
+            status=SessionStatus.ACTIVE
+        ).order_by("-updated_at")
+        
+        for sess in active_sessions:
+            if not ChatMessage.objects.filter(session=sess).exists():
+                if title and sess.title != title:
+                    sess.title = title
+                    sess.save()
+                return Response(serialize_conversation(sess), status=status.HTTP_200_OK)
+                
         session_id = generate_uuid()
         
         # We manually initialize session in our model, associated with authenticated user

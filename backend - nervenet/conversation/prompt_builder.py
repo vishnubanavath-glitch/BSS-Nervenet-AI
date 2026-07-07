@@ -52,6 +52,12 @@ class PromptBuilder:
             # Ensure roles align to user/assistant for Claude
             role = "assistant" if msg.role == "assistant" else "user"
             content = msg.content
+            if role == "assistant":
+                import re
+                # Strip large visual code blocks (HTML, Vega-Lite, and JSON) to save input tokens and avoid rate limits (429)
+                content = re.sub(r"```html[\s\S]*?```", "```html\n[HTML Dashboard Code Block Hidden to Save Tokens]\n```", content)
+                content = re.sub(r"```vegalite[\s\S]*?```", "```vegalite\n[Vega-Lite Spec Hidden to Save Tokens]\n```", content)
+                content = re.sub(r"```json[\s\S]*?```", "```json\n[JSON Data Block Hidden to Save Tokens]\n```", content)
             if role == "user" and privacy_engine:
                 content = privacy_engine.tokenize_text(content)
             formatted_messages.append({

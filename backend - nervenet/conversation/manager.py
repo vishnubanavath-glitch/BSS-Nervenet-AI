@@ -237,6 +237,10 @@ class ConversationManager:
         else:
             recent_history = full_history
             
+        # Safeguard: Cap history context window to last 10 messages to protect rate limits
+        if len(recent_history) > 10:
+            recent_history = recent_history[-10:]
+            
         # 6. Build the prompt payload
         # Note: recent_history currently contains the newly added user message at the end.
         # We pass history *before* the user message, and the current message content separately.

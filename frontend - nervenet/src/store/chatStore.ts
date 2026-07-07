@@ -122,11 +122,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createConversation: async (title = "New Chat") => {
     const res = await api.post("/conversations", { title });
     const conv = res.data;
-    set((state) => ({
-      conversations: [conv, ...state.conversations],
-      currentConversationId: conv.id,
-      messages: []
-    }));
+    set((state) => {
+      const exists = state.conversations.some((c) => c.id === conv.id);
+      return {
+        conversations: exists ? state.conversations : [conv, ...state.conversations],
+        currentConversationId: conv.id,
+        messages: []
+      };
+    });
     return conv;
   },
 
