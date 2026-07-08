@@ -2,6 +2,8 @@
 
 Nervenet is a state-of-the-art, secure AI customer support, database management, and data analytics platform designed for electricity distribution utility companies. It enables non-technical personnel and support agents to query live database records (tariffs, meter readings, billing histories) using natural language, powered by Anthropic's Claude LLM.
 
+The frontend is capable of rendering rich, interactive data visualizations via **Vega-Lite** and generating dynamic relationship diagrams and mindmaps using the **D2 diagramming language** (compiled seamlessly in-browser via WASM).
+
 The core system architecture features a **React SPA client**, a **Django ASGI core engine**, a custom **Model Context Protocol (MCP)** database gateway enforcing read-only SELECT queries, and a stateful **Privacy Engine** that guarantees zero leakage of PII (Personally Identifiable Information) to external LLM providers.
 
 ---
