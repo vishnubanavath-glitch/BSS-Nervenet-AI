@@ -517,25 +517,25 @@ async def relationship_graph() -> dict:
     try:
         meta = await _get_metadata()
         
-        # Build Mermaid graph
-        mermaid_lines = ["graph TD"]
+        # Build D2 graph
+        d2_lines = ["direction: down"]
         for tbl in meta.tables:
-            mermaid_lines.append(f"    {tbl}[\"{tbl}\"]")
+            d2_lines.append(f"{tbl}: {tbl}")
             
         for rel in meta.relationships:
             from_t = rel["from_table"]
             to_t = rel["to_table"]
             from_c = rel["from_column"]
             to_c = rel["to_column"]
-            mermaid_lines.append(f"    {from_t} -->|\"{from_c} -> {to_c}\"| {to_t}")
+            d2_lines.append(f'{from_t} -> {to_t}: "{from_c} -> {to_c}"')
             
-        mermaid_str = "\n".join(mermaid_lines)
+        d2_str = "\n".join(d2_lines)
         
         res = {
             "success": True,
             "nodes": list(meta.tables.keys()),
             "edges": meta.relationships,
-            "mermaid_graph": mermaid_str,
+            "d2_graph": d2_str,
             "_mcp_metadata": _get_intelligent_metadata("relationship_graph")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000

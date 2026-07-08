@@ -167,7 +167,7 @@ async def test_new_overview_and_stats_tools(test_meta_fixture):
     graph_res = await relationship_graph()
     assert graph_res["success"] is True
     assert "consumers" in graph_res["nodes"]
-    assert "mermaid_graph" in graph_res
+    assert "d2_graph" in graph_res
 
 @pytest.mark.asyncio
 async def test_analytics_tool(test_meta_fixture, mock_cursor):

@@ -101,7 +101,7 @@ DATA VISUALIZATION CAPABILITIES (PREMIUM DASHBOARD CHARTS):
   ]
 }
 ```
-* For flowcharts or diagram relationships, output a ```mermaid block.
+* For flowcharts, diagram relationships, or mindmaps, output a ```d2 block.
 
 ==================================================
 DATABASE SCHEMA REFERENCE:

@@ -4,13 +4,13 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import mermaid from "mermaid";
+import { D2 } from "@terrastruct/d2";
 import { Copy, Check, Sparkles, Terminal, Eye, Code, RotateCcw, Pencil, AlertTriangle } from "lucide-react";
 import { Message } from "@/store/chatStore";
 import { VegaChart } from "./VegaChart";
 
-// Init mermaid once
-mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
+// Init D2 once
+const d2Instance = new D2();
 
 interface MessageBubbleProps {
   message: Message;
@@ -21,17 +21,32 @@ interface MessageBubbleProps {
   onSendMessage?: (prompt: string, attachments: any[]) => void;
 }
 
-/* ─── Mermaid Diagram ──────────────────────────────────────────────── */
-const MermaidDiagram: React.FC<{ code: string }> = ({ code }) => {
+/* ─── D2 Diagram ──────────────────────────────────────────────── */
+const D2Diagram: React.FC<{ code: string }> = ({ code }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
-    const id = `mermaid-${Math.random().toString(36).slice(2)}`;
-    mermaid.render(id, code)
-      .then(({ svg }) => { if (ref.current) ref.current.innerHTML = svg; })
-      .catch(e => setError(e.message ?? "Diagram error"));
+    
+    let isMounted = true;
+    const renderD2 = async () => {
+      try {
+        const result = await d2Instance.compile(code);
+        // theme 0 is light, darkTheme 200 is standard dark
+        const svg = await d2Instance.render(result.diagram, { theme: 0, darkTheme: 200 });
+        if (isMounted && ref.current) {
+          ref.current.innerHTML = svg;
+        }
+      } catch (e: any) {
+        if (isMounted) {
+          setError(e.message ?? "Diagram error");
+        }
+      }
+    };
+    
+    renderD2();
+    return () => { isMounted = false; };
   }, [code]);
 
   if (error) return (
@@ -39,7 +54,7 @@ const MermaidDiagram: React.FC<{ code: string }> = ({ code }) => {
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {error}
     </div>
   );
-  return <div ref={ref} className="my-3 overflow-x-auto rounded-xl bg-[#0d0d10] p-4 border border-border/40" />;
+  return <div ref={ref} className="my-3 overflow-x-auto rounded-xl bg-[#0d0d10] p-4 border border-border/40 [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-w-full" />;
 };
 
 /* ─── BlobIframe ───────────────────────────────────────────────────── */
@@ -213,14 +228,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const processedContent = React.useMemo(() => {
     if (!isLast || !isStreaming || isUser) return message.content;
     let result = message.content;
-    // Replace fully-closed visual code blocks (html/svg/mermaid/vega/vegalite) with a sentinel
+    // Replace fully-closed visual code blocks (html/svg/mermaid/d2/vega/vegalite) with a sentinel
     result = result.replace(
-      /```(html|svg|mermaid|vega|vegalite)[\s\S]*?```/gi,
+      /```(html|svg|mermaid|d2|vega|vegalite)[\s\S]*?```/gi,
       PREVIEW_SENTINEL
     );
     // Replace still-open (unclosed) visual blocks — from the ``` to end of string
     result = result.replace(
-      /```(html|svg|mermaid|vega|vegalite)[\s\S]*$/i,
+      /```(html|svg|mermaid|d2|vega|vegalite)[\s\S]*$/i,
       PREVIEW_SENTINEL
     );
     return result;
@@ -354,7 +369,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }
 
       // Interactive visual artifacts
-      if (lang === "html" || lang === "svg" || lang === "mermaid") {
+      if (lang === "html" || lang === "svg" || lang === "mermaid" || lang === "d2") {
         if (isLast && isStreaming) {
           return (
             <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
@@ -365,8 +380,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           );
         }
-        if (lang === "mermaid") {
-          return <MermaidDiagram code={codeString} />;
+        if (lang === "mermaid" || lang === "d2") {
+          return <D2Diagram code={codeString} />;
         }
         return <InlineArtifact code={codeString} language={lang} />;
       }
