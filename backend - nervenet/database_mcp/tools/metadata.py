@@ -10,6 +10,24 @@ from database_mcp.exceptions import DatabaseMcpException, MetadataError
 
 logger = logging.getLogger(__name__)
 
+def _get_intelligent_metadata(tool_name: str) -> dict:
+    """Helper to return intelligent metadata for a tool response."""
+    metadata = {
+        "execution_cost": "LOW",
+        "cacheable": True,
+        "retryable": True,
+        "guidance": "Cache this metadata for the conversation to avoid redundant calls."
+    }
+    if tool_name in ["database_statistics", "database_overview"]:
+        metadata["execution_cost"] = "MEDIUM"
+        metadata["guidance"] = "Cache this overview for the conversation. Drill down into specific tables only when necessary."
+    elif tool_name in ["table_profile", "search_schema"]:
+        metadata["execution_cost"] = "HIGH"
+        metadata["cacheable"] = False
+        metadata["guidance"] = "Expensive operation. Avoid calling repeatedly for the same arguments."
+    return metadata
+
+
 async def _get_metadata() -> Any:
     """Helper to retrieve metadata, warming the cache and checking for schema drift."""
     start_time = time.perf_counter()
@@ -51,7 +69,8 @@ async def discover_database() -> dict:
             "metadata_version": meta.metadata_version,
             "schema_version": meta.schema_version,
             "cache_timestamp": meta.cache_timestamp,
-            "last_refresh": meta.last_refresh
+            "last_refresh": meta.last_refresh,
+            "_mcp_metadata": _get_intelligent_metadata("discover_database")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("discover_database", duration_ms)
@@ -92,7 +111,8 @@ async def list_tables() -> dict:
         tables_list = list(meta.tables.keys())
         res = {
             "success": True,
-            "tables": tables_list
+            "tables": tables_list,
+            "_mcp_metadata": _get_intelligent_metadata("list_tables")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("list_tables", duration_ms)
@@ -137,8 +157,30 @@ async def describe_table(table_name: str) -> dict:
             raise MetadataError(f"Table '{table_name}' not found in database metadata.")
             
         tbl = meta.tables[table_name]
+        related_tables = [rel["to_table"] for rel in meta.relationships if rel.get("from_table") == table_name]
+        related_tables.extend([rel["from_table"] for rel in meta.relationships if rel.get("to_table") == table_name])
+        
+        schema_summary = {
+            "primary_keys": tbl.primary_keys,
+            "identifier_columns": [],
+            "indexed_columns": [],
+            "numeric_columns": [],
+            "date_columns": [],
+            "related_tables": list(set(related_tables))
+        }
+
         columns_info = {}
         for col_name, col in tbl.columns.items():
+            dt_lower = col.data_type.lower()
+            if col.is_primary_key or col.is_foreign_key:
+                schema_summary["indexed_columns"].append(col_name)
+            if col_name.endswith("_id") or col_name == "id" or "uuid" in col_name.lower():
+                schema_summary["identifier_columns"].append(col_name)
+            if any(x in dt_lower for x in ["int", "decimal", "numeric", "float", "double"]):
+                schema_summary["numeric_columns"].append(col_name)
+            if any(x in dt_lower for x in ["date", "time", "timestamp"]):
+                schema_summary["date_columns"].append(col_name)
+
             columns_info[col_name] = {
                 "data_type": col.data_type,
                 "is_nullable": col.is_nullable,
@@ -150,9 +192,11 @@ async def describe_table(table_name: str) -> dict:
         res = {
             "success": True,
             "table": table_name,
+            "schema_summary": schema_summary,
             "columns": columns_info,
             "primary_keys": tbl.primary_keys,
-            "foreign_keys": tbl.foreign_keys
+            "foreign_keys": tbl.foreign_keys,
+            "_mcp_metadata": _get_intelligent_metadata("describe_table")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("describe_table", duration_ms)
@@ -193,7 +237,8 @@ async def list_relationships() -> dict:
         rel_list = meta.relationships
         res = {
             "success": True,
-            "relationships": rel_list
+            "relationships": rel_list,
+            "_mcp_metadata": _get_intelligent_metadata("list_relationships")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("list_relationships", duration_ms)
@@ -319,7 +364,8 @@ async def search_schema(keyword: str) -> dict:
             "keyword": keyword,
             "matches": res_tables,
             "matching_tables": matching_tables_list,
-            "matching_columns": matching_columns_list
+            "matching_columns": matching_columns_list,
+            "_mcp_metadata": _get_intelligent_metadata("search_schema")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("search_schema", duration_ms)
@@ -381,7 +427,8 @@ async def database_overview() -> dict:
             "total_size_bytes": total_size,
             "business_domains": meta.business_domains,
             "tables": tables_overview,
-            "relationships": meta.relationships
+            "relationships": meta.relationships,
+            "_mcp_metadata": _get_intelligent_metadata("database_overview")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("database_overview", duration_ms)
@@ -430,7 +477,8 @@ async def table_profile(table_name: str) -> dict:
 
         res = {
             "success": True,
-            "profile": profile
+            "profile": profile,
+            "_mcp_metadata": _get_intelligent_metadata("table_profile")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("table_profile", duration_ms)
@@ -487,7 +535,8 @@ async def relationship_graph() -> dict:
             "success": True,
             "nodes": list(meta.tables.keys()),
             "edges": meta.relationships,
-            "mermaid_graph": mermaid_str
+            "mermaid_graph": mermaid_str,
+            "_mcp_metadata": _get_intelligent_metadata("relationship_graph")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("relationship_graph", duration_ms)
@@ -582,7 +631,8 @@ async def database_statistics() -> dict:
                 "tables_with_primary_key_pct": schema_health_pct,
                 "status": "healthy" if schema_health_pct > 80 else "warning"
             },
-            "performance_metrics": MetricsService.get_metrics()
+            "performance_metrics": MetricsService.get_metrics(),
+            "_mcp_metadata": _get_intelligent_metadata("database_statistics")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("database_statistics", duration_ms)

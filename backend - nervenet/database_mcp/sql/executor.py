@@ -296,7 +296,15 @@ class SQLExecutor:
         actual_joins = count_joins_in_sql(sql)
         if actual_joins > settings.max_joins_allowed:
             raise QueryPlanningError(
-                f"Query exceeds maximum joins limit ({actual_joins} > {settings.max_joins_allowed})."
+                f"Query exceeds maximum joins limit ({actual_joins} > {settings.max_joins_allowed}).",
+                recoverability=True,
+                suggested_action="Reduce the number of JOINs or query a denormalized/aggregated table.",
+                retry_recommended=True,
+                planner_feedback={
+                    "reason_for_rejection": "Too many joins",
+                    "estimated_scan_size": None,
+                    "suggested_filters": None
+                }
             )
 
         explain_sql = f"EXPLAIN {sql}"
@@ -358,14 +366,34 @@ class SQLExecutor:
             cost_threshold = settings.query_cost_limit
             if total_estimated_rows > cost_threshold:
                 raise QueryPlanningError(
-                    f"Query estimated cost ({total_estimated_rows} rows to scan) exceeds the threshold ({cost_threshold})."
+                    f"Query estimated cost ({total_estimated_rows} rows to scan) exceeds the threshold ({cost_threshold}).",
+                    recoverability=True,
+                    suggested_action="Add highly selective filters using indexed columns.",
+                    retry_recommended=True,
+                    planner_feedback={
+                        "reason_for_rejection": "Estimated scan cost exceeds threshold",
+                        "estimated_scan_size": total_estimated_rows,
+                        "suggested_filters": "Indexed columns",
+                        "suggested_next_action": "Apply WHERE filters to narrow down the dataset before joining.",
+                        "retry_worthwhile": True
+                    }
                 )
                 
             # Enforce large full table scan limit
             if has_full_table_scan and total_estimated_rows > 10000:
                 raise QueryPlanningError(
                     f"Forbidden full table scan detected on a large table ({total_estimated_rows} rows to scan). "
-                    "Please filter by indexed columns."
+                    "Please filter by indexed columns.",
+                    recoverability=True,
+                    suggested_action="Apply WHERE filters on indexed columns to avoid a full table scan.",
+                    retry_recommended=True,
+                    planner_feedback={
+                        "reason_for_rejection": "Full table scan on large table",
+                        "estimated_scan_size": total_estimated_rows,
+                        "suggested_filters": "Indexed columns",
+                        "suggested_next_action": "Avoid SELECT * without WHERE, and ensure WHERE uses an index.",
+                        "retry_worthwhile": True
+                    }
                 )
                 
         except QueryPlanningError as qe:

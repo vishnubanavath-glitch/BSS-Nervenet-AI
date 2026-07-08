@@ -1,19 +1,35 @@
 class DatabaseMcpException(Exception):
     """Base exception for all Database MCP operations, containing structured error details."""
-    def __init__(self, message: str, code: str, category: str):
+    def __init__(self, message: str, code: str, category: str, 
+                 recoverability: bool = False, 
+                 suggested_action: str = None, 
+                 retry_recommended: bool = False,
+                 planner_feedback: dict = None):
         super().__init__(message)
         self.message = message
         self.code = code
         self.category = category
+        self.recoverability = recoverability
+        self.suggested_action = suggested_action
+        self.retry_recommended = retry_recommended
+        self.planner_feedback = planner_feedback
 
     def to_dict(self) -> dict:
+        error_dict = {
+            "code": self.code,
+            "message": self.message,
+            "category": self.category,
+            "recoverability": self.recoverability,
+            "retry_recommended": self.retry_recommended
+        }
+        if self.suggested_action:
+            error_dict["suggested_action"] = self.suggested_action
+        if self.planner_feedback:
+            error_dict["planner_feedback"] = self.planner_feedback
+
         return {
             "success": False,
-            "error": {
-                "code": self.code,
-                "message": self.message,
-                "category": self.category
-            }
+            "error": error_dict
         }
 
 
@@ -67,8 +83,13 @@ class CacheError(DatabaseMcpException):
 
 class QueryPlanningError(DatabaseMcpException):
     """Raised when an issue occurs during query cost estimation or optimization."""
-    def __init__(self, message: str):
-        super().__init__(message, code="QUERY_PLANNING_ERROR", category="Planning")
+    def __init__(self, message: str, recoverability: bool = True, 
+                 suggested_action: str = "Refine filters or use indexed columns.", 
+                 retry_recommended: bool = True,
+                 planner_feedback: dict = None):
+        super().__init__(message, code="QUERY_PLANNING_ERROR", category="Planning",
+                         recoverability=recoverability, suggested_action=suggested_action,
+                         retry_recommended=retry_recommended, planner_feedback=planner_feedback)
 
 
 class SchemaChangedError(DatabaseMcpException):

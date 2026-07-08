@@ -11,6 +11,23 @@ from database_mcp.exceptions import DatabaseMcpException, SqlValidationError
 
 logger = logging.getLogger(__name__)
 
+def _get_sql_metadata(tool_name: str) -> dict:
+    """Helper to return intelligent metadata for SQL tool responses."""
+    metadata = {
+        "execution_cost": "HIGH",
+        "cacheable": False,
+        "retryable": True,
+        "guidance": "Prefer indexed columns, apply selective filters, avoid unnecessary joins, and use LIMIT where appropriate."
+    }
+    if tool_name == "validate_sql":
+        metadata["execution_cost"] = "LOW"
+    elif tool_name == "analytics_summary":
+        metadata["cacheable"] = True
+        metadata["execution_cost"] = "MEDIUM"
+        metadata["guidance"] = "Cache this summary for the conversation."
+    return metadata
+
+
 @mcp.tool()
 async def validate_sql(sql: str) -> dict:
     """Validate a SQL statement to ensure it is syntactically sound and read-only.
@@ -28,7 +45,8 @@ async def validate_sql(sql: str) -> dict:
         SQLValidator.validate(sql)
         res = {
             "success": True,
-            "message": "SQL statement is valid and read-only."
+            "message": "SQL statement is valid and read-only.",
+            "_mcp_metadata": _get_sql_metadata("validate_sql")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("validate_sql", duration_ms)
@@ -77,6 +95,8 @@ async def execute_sql(sql: str, max_rows: Optional[int] = None) -> dict:
             duration_ms = (time.perf_counter() - start_time) * 1000
             # Record routed tool execution
             MetricsService.record_tool_execution("execute_sql_routed", duration_ms)
+            if isinstance(routed_result, dict):
+                routed_result["_mcp_metadata"] = _get_sql_metadata("execute_sql")
             return routed_result
     except Exception as e:
         logger.warning(f"Router redirection failed: {e}. Proceeding with standard execution.")
@@ -90,6 +110,7 @@ async def execute_sql(sql: str, max_rows: Optional[int] = None) -> dict:
         MetricsService.record_tool_execution("execute_sql", duration_ms)
         QueryHistoryService.record("execute_sql", duration_ms, row_count, True)
         StructuredLogger.log_execution("execute_sql", duration_ms, False, row_count)
+        res["_mcp_metadata"] = _get_sql_metadata("execute_sql")
         return res
     except DatabaseMcpException as e:
         error_msg = e.message
@@ -177,7 +198,8 @@ async def explain_sql(sql: str) -> dict:
             "success": True,
             "query": sql,
             "plain_english_explanation": ". ".join(explanation_parts) + ".",
-            "mysql_execution_plan": explain_plan
+            "mysql_execution_plan": explain_plan,
+            "_mcp_metadata": _get_sql_metadata("explain_sql")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("explain_sql", duration_ms)
@@ -325,7 +347,8 @@ async def analytics_summary() -> dict:
 
         res = {
             "success": True,
-            "analytics_summary": analytics_results
+            "analytics_summary": analytics_results,
+            "_mcp_metadata": _get_sql_metadata("analytics_summary")
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         MetricsService.record_tool_execution("analytics_summary", duration_ms)

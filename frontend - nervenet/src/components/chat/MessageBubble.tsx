@@ -196,7 +196,10 @@ export const InlineArtifact: React.FC<{ code: string; language: string }> = ({ c
   );
 };
 
-/* ─── MessageBubble ────────────────────────────────────────────────── */
+const PREVIEW_SENTINEL = "::PREVIEW_LOADING::";
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message, isLast, isStreaming, onRegenerate, onEditSubmit, onSendMessage
 }) => {
@@ -207,7 +210,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   // Pre-process streaming content: replace any in-progress visual code block with a loading sentinel
   // so ReactMarkdown never renders raw code characters during streaming.
-  const PREVIEW_SENTINEL = "::PREVIEW_LOADING::";
   const processedContent = React.useMemo(() => {
     if (!isLast || !isStreaming || isUser) return message.content;
     let result = message.content;
@@ -236,6 +238,159 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
     setIsEditing(false);
   };
+
+  const markdownComponents = React.useMemo(() => ({
+    img: ({ src, alt, ...props }: any) => {
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+      const host = apiBase.endsWith("/api") ? apiBase.slice(0, -4) : apiBase;
+      const fullSrc = src && src.startsWith("/api/") ? `${host}${src}` : src;
+      return <img src={fullSrc} alt={alt}
+        className="rounded-2xl border border-border/60 max-w-xl w-full my-4 shadow-2xl animate-in zoom-in-95 duration-300 object-cover"
+        {...props} />;
+    },
+    p: ({ children }: any) => {
+      // Render sentinel as a skeleton loading card (not a spinner)
+      const text = typeof children === "string" ? children : Array.isArray(children) ? children.join("") : "";
+      if (text.includes(PREVIEW_SENTINEL)) {
+        return (
+          <div className="my-4 rounded-2xl border border-border/40 overflow-hidden shadow-2xl not-prose bg-secondary/10 dark:bg-[#0d0d11]">
+            {/* Top progress bar */}
+            <div className="h-0.5 bg-border/30 relative overflow-hidden">
+              <div className="preview-progress-bar h-full bg-gradient-to-r from-primary via-primary/80 to-primary/40 rounded-full absolute left-0 top-0" />
+            </div>
+
+            {/* Header skeleton */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-3 h-3 rounded-full skeleton-shimmer opacity-60" />
+                <div className="h-2.5 w-28 rounded-full skeleton-shimmer opacity-60" />
+              </div>
+              <div className="flex gap-1.5">
+                <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+                <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+                <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
+              </div>
+            </div>
+
+            {/* Chart/content skeleton body */}
+            <div className="p-5 space-y-4">
+              {/* Chart bars skeleton */}
+              <div className="flex items-end gap-2 h-28 px-2">
+                {[65, 40, 80, 55, 90, 35, 70, 48, 82, 60].map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-t-md skeleton-shimmer opacity-50"
+                    style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
+                  />
+                ))}
+              </div>
+
+              {/* X-axis skeleton */}
+              <div className="h-px bg-border/30 mx-2" />
+
+              {/* Legend skeleton rows */}
+              <div className="space-y-2 pt-1">
+                {[70, 50, 85].map((w, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    <div className="w-3 h-3 rounded-sm skeleton-shimmer opacity-50" style={{ animationDelay: `${i * 0.15}s` }} />
+                    <div className="h-2 rounded-full skeleton-shimmer opacity-40" style={{ width: `${w}%`, animationDelay: `${i * 0.1}s` }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer label */}
+            <div className="px-5 pb-4 flex items-center gap-2 text-[10px] font-semibold text-muted-foreground/50 tracking-wide uppercase">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              Generating preview…
+            </div>
+          </div>
+        );
+      }
+      return <p className="mb-3 last:mb-0">{children}</p>;
+    },
+    ul: ({ children }: any) => <ul className="list-disc pl-5 mb-3">{children}</ul>,
+    ol: ({ children }: any) => <ol className="list-decimal pl-5 mb-3">{children}</ol>,
+    li: ({ children }: any) => <li className="mb-1">{children}</li>,
+    a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>,
+    table: ({ children }: any) => (
+      <div className="overflow-x-auto my-4 rounded-xl border border-border">
+        <table className="min-w-full divide-y divide-border dark:bg-[#0e0e11] bg-white">{children}</table>
+      </div>
+    ),
+    thead: ({ children }: any) => <thead className="bg-secondary/20">{children}</thead>,
+    tbody: ({ children }: any) => <tbody className="divide-y divide-border">{children}</tbody>,
+    tr: ({ children }: any) => <tr>{children}</tr>,
+    th: ({ children }: any) => <th className="px-4 py-2 text-left text-xs font-bold dark:text-white text-gray-800 uppercase tracking-wider">{children}</th>,
+    td: ({ children }: any) => <td className="px-4 py-2 text-xs dark:text-gray-200 text-gray-800 font-medium">{children}</td>,
+    code: ({ className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || "");
+      const codeString = String(children).replace(/\n$/, "");
+      const isInline = !match;
+
+      if (isInline) return (
+        <code className="bg-secondary/50 dark:bg-secondary/15 border border-border/50 dark:text-white text-gray-800 rounded px-1.5 py-0.5 text-xs font-semibold font-mono" {...props}>
+          {children}
+        </code>
+      );
+
+      const lang = match ? match[1].toLowerCase() : "";
+
+      // Vega-Lite visual charts
+      const isVegaSpec = (lang === "vega" || lang === "vegalite" || 
+                         (lang === "json" && codeString.includes("vega.github.io/schema/vega")));
+      if (isVegaSpec) {
+        if (isLast && isStreaming) {
+          return (
+            <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
+              <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <span className="text-xs font-semibold text-muted-foreground animate-pulse">
+                Rendering live chart...
+              </span>
+            </div>
+          );
+        }
+        return <VegaChart specString={codeString} onSendMessage={onSendMessage} />;
+      }
+
+      // Interactive visual artifacts
+      if (lang === "html" || lang === "svg" || lang === "mermaid") {
+        if (isLast && isStreaming) {
+          return (
+            <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
+              <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <span className="text-xs font-semibold text-muted-foreground animate-pulse">
+                Rendering live preview...
+              </span>
+            </div>
+          );
+        }
+        if (lang === "mermaid") {
+          return <MermaidDiagram code={codeString} />;
+        }
+        return <InlineArtifact code={codeString} language={lang} />;
+      }
+
+      // Standard code block
+      return (
+        <div className="my-4 rounded-xl border border-border/60 overflow-hidden bg-[#0d0d0f] shadow-lg">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border/55 bg-secondary/15 select-none">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <Terminal className="w-3.5 h-3.5" />
+              <span>{match ? match[1] : "code"}</span>
+            </div>
+            <button onClick={() => navigator.clipboard.writeText(codeString)}
+              className="text-[10px] font-bold text-muted-foreground hover:text-white flex items-center gap-1 transition-colors">
+              <Copy className="w-3 h-3" /><span>Copy</span>
+            </button>
+          </div>
+          <pre className="p-4 overflow-x-auto text-xs font-medium font-mono text-emerald-400">
+            <code>{codeString}</code>
+          </pre>
+        </div>
+      );
+    }
+  }), [isLast, isStreaming, onSendMessage]);
 
   return (
     <div className={`flex w-full gap-4 py-6 px-4 md:px-6 border-b border-border/20 ${isUser ? "bg-background" : "bg-secondary/15"}`}>
@@ -308,160 +463,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           /* Markdown Body */
           <div className={`prose dark:prose-invert max-w-none text-sm leading-relaxed dark:text-gray-200 text-gray-800 ${!isUser && isLast && isStreaming ? "typing-cursor" : ""}`}>
             <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={{
-                img: ({ src, alt, ...props }) => {
-                  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-                  const host = apiBase.endsWith("/api") ? apiBase.slice(0, -4) : apiBase;
-                  const fullSrc = src && src.startsWith("/api/") ? `${host}${src}` : src;
-                  return <img src={fullSrc} alt={alt}
-                    className="rounded-2xl border border-border/60 max-w-xl w-full my-4 shadow-2xl animate-in zoom-in-95 duration-300 object-cover"
-                    {...props} />;
-                },
-                p: ({ children }) => {
-                  // Render sentinel as a skeleton loading card (not a spinner)
-                  const text = typeof children === "string" ? children : Array.isArray(children) ? children.join("") : "";
-                  if (text.includes(PREVIEW_SENTINEL)) {
-                    return (
-                      <div className="my-4 rounded-2xl border border-border/40 overflow-hidden shadow-2xl not-prose bg-secondary/10 dark:bg-[#0d0d11]">
-                        {/* Top progress bar */}
-                        <div className="h-0.5 bg-border/30 relative overflow-hidden">
-                          <div className="preview-progress-bar h-full bg-gradient-to-r from-primary via-primary/80 to-primary/40 rounded-full absolute left-0 top-0" />
-                        </div>
-
-                        {/* Header skeleton */}
-                        <div className="flex items-center justify-between px-5 py-3 border-b border-border/20">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-3 h-3 rounded-full skeleton-shimmer opacity-60" />
-                            <div className="h-2.5 w-28 rounded-full skeleton-shimmer opacity-60" />
-                          </div>
-                          <div className="flex gap-1.5">
-                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
-                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
-                            <div className="w-2 h-2 rounded-full skeleton-shimmer opacity-40" />
-                          </div>
-                        </div>
-
-                        {/* Chart/content skeleton body */}
-                        <div className="p-5 space-y-4">
-                          {/* Chart bars skeleton */}
-                          <div className="flex items-end gap-2 h-28 px-2">
-                            {[65, 40, 80, 55, 90, 35, 70, 48, 82, 60].map((h, i) => (
-                              <div
-                                key={i}
-                                className="flex-1 rounded-t-md skeleton-shimmer opacity-50"
-                                style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
-                              />
-                            ))}
-                          </div>
-
-                          {/* X-axis skeleton */}
-                          <div className="h-px bg-border/30 mx-2" />
-
-                          {/* Legend skeleton rows */}
-                          <div className="space-y-2 pt-1">
-                            {[70, 50, 85].map((w, i) => (
-                              <div key={i} className="flex items-center gap-2.5">
-                                <div className="w-3 h-3 rounded-sm skeleton-shimmer opacity-50" style={{ animationDelay: `${i * 0.15}s` }} />
-                                <div className="h-2 rounded-full skeleton-shimmer opacity-40" style={{ width: `${w}%`, animationDelay: `${i * 0.1}s` }} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Footer label */}
-                        <div className="px-5 pb-4 flex items-center gap-2 text-[10px] font-semibold text-muted-foreground/50 tracking-wide uppercase">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                          Generating preview…
-                        </div>
-                      </div>
-                    );
-                  }
-                  return <p className="mb-3 last:mb-0">{children}</p>;
-                },
-                ul: ({ children }) => <ul className="list-disc pl-5 mb-3">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3">{children}</ol>,
-                li: ({ children }) => <li className="mb-1">{children}</li>,
-                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>,
-                table: ({ children }) => (
-                  <div className="overflow-x-auto my-4 rounded-xl border border-border">
-                    <table className="min-w-full divide-y divide-border dark:bg-[#0e0e11] bg-white">{children}</table>
-                  </div>
-                ),
-                thead: ({ children }) => <thead className="bg-secondary/20">{children}</thead>,
-                tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
-                tr: ({ children }) => <tr>{children}</tr>,
-                th: ({ children }) => <th className="px-4 py-2 text-left text-xs font-bold dark:text-white text-gray-800 uppercase tracking-wider">{children}</th>,
-                td: ({ children }) => <td className="px-4 py-2 text-xs dark:text-gray-200 text-gray-800 font-medium">{children}</td>,
-                code: ({ className, children, ...props }) => {
-                  const match = /language-(\w+)/.exec(className || "");
-                  const codeString = String(children).replace(/\n$/, "");
-                  const isInline = !match;
-
-                  if (isInline) return (
-                    <code className="bg-secondary/50 dark:bg-secondary/15 border border-border/50 dark:text-white text-gray-800 rounded px-1.5 py-0.5 text-xs font-semibold font-mono" {...props}>
-                      {children}
-                    </code>
-                  );
-
-                  const lang = match ? match[1].toLowerCase() : "";
-
-                  // Vega-Lite visual charts
-                  const isVegaSpec = (lang === "vega" || lang === "vegalite" || 
-                                     (lang === "json" && codeString.includes("vega.github.io/schema/vega")));
-                  if (isVegaSpec) {
-                    if (isLast && isStreaming) {
-                      return (
-                        <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
-                          <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                          <span className="text-xs font-semibold text-muted-foreground animate-pulse">
-                            Rendering live chart...
-                          </span>
-                        </div>
-                      );
-                    }
-                    return <VegaChart specString={codeString} onSendMessage={onSendMessage} />;
-                  }
-
-                  // Interactive visual artifacts
-                  if (lang === "html" || lang === "svg" || lang === "mermaid") {
-                    if (isLast && isStreaming) {
-                      return (
-                        <div className="my-3 rounded-2xl border border-border/40 overflow-hidden shadow-2xl p-6 bg-secondary/10 flex flex-col items-center justify-center min-h-[150px] space-y-3">
-                          <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                          <span className="text-xs font-semibold text-muted-foreground animate-pulse">
-                            Rendering live preview...
-                          </span>
-                        </div>
-                      );
-                    }
-                    if (lang === "mermaid") {
-                      return <MermaidDiagram code={codeString} />;
-                    }
-                    return <InlineArtifact code={codeString} language={lang} />;
-                  }
-
-                  // Standard code block
-                  return (
-                    <div className="my-4 rounded-xl border border-border/60 overflow-hidden bg-[#0d0d0f] shadow-lg">
-                      <div className="flex items-center justify-between px-4 py-2 border-b border-border/55 bg-secondary/15 select-none">
-                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          <Terminal className="w-3.5 h-3.5" />
-                          <span>{match ? match[1] : "code"}</span>
-                        </div>
-                        <button onClick={() => navigator.clipboard.writeText(codeString)}
-                          className="text-[10px] font-bold text-muted-foreground hover:text-white flex items-center gap-1 transition-colors">
-                          <Copy className="w-3 h-3" /><span>Copy</span>
-                        </button>
-                      </div>
-                      <pre className="p-4 overflow-x-auto text-xs font-medium font-mono text-emerald-400">
-                        <code>{codeString}</code>
-                      </pre>
-                    </div>
-                  );
-                }
-              }}
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
+              components={markdownComponents as any}
             >
               {processedContent}
             </ReactMarkdown>

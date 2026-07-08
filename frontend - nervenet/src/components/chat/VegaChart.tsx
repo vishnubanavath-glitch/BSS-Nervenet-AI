@@ -6,7 +6,6 @@ import {
   TrendingDown, 
   ArrowRight, 
   Activity,
-  Download,
   Image,
   FileSpreadsheet,
   BarChart3,
@@ -132,6 +131,7 @@ export const VegaChart: React.FC<VegaChartProps> = ({ specString, onSendMessage 
     const options: any = {
       actions: false,
       theme: "dark",
+      tooltip: { theme: "dark" },
       config: {
         background: themeBackground,
         autosize: { type: "fit", contains: "padding" },
@@ -182,7 +182,8 @@ export const VegaChart: React.FC<VegaChartProps> = ({ specString, onSendMessage 
         view: { stroke: "transparent" },
         mark: {
           color: "#06b6d4", // Cyan base
-          invalid: null
+          invalid: null,
+          tooltip: true
         }
       },
       width: "container",
@@ -197,7 +198,7 @@ export const VegaChart: React.FC<VegaChartProps> = ({ specString, onSendMessage 
         viewRef.current = view;
 
         // Drill-down click listener to query database dynamically
-        view.addEventListener("click", (event, item) => {
+        view.addEventListener("click", (_event, item) => {
           if (item && item.datum && onSendMessage) {
             const datum = item.datum;
             const queryParts: string[] = [];
@@ -425,10 +426,17 @@ export const VegaChart: React.FC<VegaChartProps> = ({ specString, onSendMessage 
         </div>
       )}
 
-      {/* Responsive Wrapper for Vega Chart */}
-      <div ref={wrapperRef} className={`px-6 pb-2 ${!title && kpis.length === 0 ? "pt-6" : ""}`}>
-        <div ref={containerRef} className="w-full vega-embed-container [&>.vega-embed]:w-full" />
-      </div>
+      {/* Responsive Wrapper or Error UI for Vega Chart */}
+      {error ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-12 text-rose-400 select-none px-6">
+          <AlertTriangle className="w-8 h-8 opacity-80 animate-pulse" />
+          <p className="text-xs font-semibold tracking-wide">{error}</p>
+        </div>
+      ) : (
+        <div ref={wrapperRef} className={`px-6 pb-2 ${!title && kpis.length === 0 ? "pt-6" : ""}`}>
+          <div ref={containerRef} className="w-full vega-embed-container [&>.vega-embed]:w-full" />
+        </div>
+      )}
 
       {/* Control Utility Toolbar (Export Actions) */}
       <div className="flex items-center justify-between border-t border-zinc-800/40 py-4 px-6 select-none bg-zinc-950/20">
