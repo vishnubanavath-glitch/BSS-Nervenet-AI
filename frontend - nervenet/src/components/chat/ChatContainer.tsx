@@ -7,7 +7,7 @@ import logoLight from "@/assets/logo_light.png";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ThinkingBubble } from "@/components/chat/ThinkingBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageSquareDashed, Download, X, PlusCircle, AlertTriangle, Brain } from "lucide-react";
+import { MessageSquareDashed, Download, X, PlusCircle, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
 
 // ─── Conversation hard limit ────────────────────────────────────────────────
@@ -29,8 +29,7 @@ export const ChatContainer: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef<boolean>(true);
 
-  // Inspector and memory states
-  const [showInspector, setShowInspector] = useState(false);
+  // Memory states
   const [sessionDetails, setSessionDetails] = useState<any>(null);
   const [memKey, setMemKey] = useState("");
   const [memValue, setMemValue] = useState("");
@@ -154,8 +153,8 @@ export const ChatContainer: React.FC = () => {
   }, [messages]);
 
   // Log telemetry info to keep states active and referenced
-  if (balance || totalTokens || conversationCost) {
-    console.debug("Telemetry stats:", balance, totalTokens, conversationCost);
+  if (balance || totalTokens || conversationCost || sessionDetails) {
+    console.debug("Telemetry stats:", balance, totalTokens, conversationCost, sessionDetails);
   }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────

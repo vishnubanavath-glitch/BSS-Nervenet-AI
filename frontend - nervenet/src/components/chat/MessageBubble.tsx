@@ -9,8 +9,9 @@ import { Copy, Check, Sparkles, Terminal, Eye, Code, RotateCcw, Pencil, AlertTri
 import { Message } from "@/store/chatStore";
 import { VegaChart } from "./VegaChart";
 
-// Init D2 once
+// Init D2 once and serialize access due to Web Worker single-promise resolution
 const d2Instance = new D2();
+let d2RenderQueue = Promise.resolve();
 
 interface MessageBubbleProps {
   message: Message;
@@ -30,19 +31,29 @@ const D2Diagram: React.FC<{ code: string }> = ({ code }) => {
     if (!ref.current) return;
     
     let isMounted = true;
-    const renderD2 = async () => {
-      try {
-        const result = await d2Instance.compile(code);
-        // theme 0 is light, darkTheme 200 is standard dark
-        const svg = await d2Instance.render(result.diagram, { theme: 0, darkTheme: 200 });
-        if (isMounted && ref.current) {
-          ref.current.innerHTML = svg;
+    const renderD2 = () => {
+      d2RenderQueue = d2RenderQueue.then(async () => {
+        if (!isMounted) return;
+        try {
+          const result = await d2Instance.compile(code);
+          // theme 0 is light, darkTheme 200 is standard dark
+          let svg = await d2Instance.render(result.diagram, { themeID: 0, darkThemeID: 200 });
+          if (typeof svg !== "string") {
+            // Unlikely to hit now, but kept as a safeguard
+            svg = (svg as any).value || (svg as any).svg || JSON.stringify(svg);
+          }
+          if (isMounted && ref.current) {
+            ref.current.innerHTML = svg;
+          }
+        } catch (e: any) {
+          if (isMounted) {
+            setError(e.message ?? "Diagram error");
+          }
         }
-      } catch (e: any) {
-        if (isMounted) {
-          setError(e.message ?? "Diagram error");
-        }
-      }
+      }).catch(e => {
+        // Catch any unforeseen queue errors so it doesn't block future renders
+        console.error("D2 queue error:", e);
+      });
     };
     
     renderD2();
@@ -340,7 +351,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     td: ({ children }: any) => <td className="px-4 py-2 text-xs dark:text-gray-200 text-gray-800 font-medium">{children}</td>,
     code: ({ className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || "");
-      const codeString = String(children).replace(/\n$/, "");
+      
+      let extracted = "";
+      if (Array.isArray(children)) {
+        extracted = children.map(c => typeof c === 'string' ? c : (c?.props?.children || "")).join("");
+      } else if (typeof children === 'string') {
+        extracted = children;
+      } else if (children && typeof children === 'object' && (children as any).props) {
+        extracted = (children as any).props.children || "";
+      } else {
+        extracted = String(children);
+      }
+      const codeString = extracted.replace(/\n$/, "");
       const isInline = !match;
 
       if (isInline) return (
