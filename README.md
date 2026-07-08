@@ -74,7 +74,7 @@ graph TD
 
 ### 🌐 Advanced Chat Interface (React Client)
 * **Real-time Streaming:** Smooth WebSocket-based response streaming for chatbot messages.
-* **Mermaid & KaTeX Support:** Native rendering of flowchart diagrams (Mermaid) and complex math equations (KaTeX / LaTeX).
+* **D2 Diagram & KaTeX Support:** Native rendering of flowchart diagrams, mindmaps, and relationship graphs using D2 (via WASM) and complex math equations (KaTeX / LaTeX).
 * **Sandboxed Code Execution:** Secure, isolated iframe environment rendering dynamic HTML/JS visual assets (such as Chart.js graphs) generated on-the-fly by the model.
 * **File Attachments:** Upload and analyze images, PDFs, and structured documents (CSV, DOCX).
 * **Voice-to-Text:** Integrated speech-to-text interface allowing users to dictate queries directly.
@@ -110,7 +110,7 @@ graph TD
 * **State Management:** Zustand
 * **Animations:** Framer Motion
 * **Charts/Analytics:** Recharts
-* **Markdown:** React Markdown, rehype-katex, remark-math, remark-gfm, rehype-raw
+* **Markdown & Diagrams:** React Markdown, rehype-katex, remark-math, remark-gfm, rehype-raw, and @terrastruct/d2
 * **Icons:** Lucide React
 
 ### Backend
