@@ -74,8 +74,9 @@ graph TD
 
 ### 🌐 Advanced Chat Interface (React Client)
 * **Real-time Streaming:** Smooth WebSocket-based response streaming for chatbot messages.
-* **D2 Diagram & KaTeX Support:** Native rendering of flowchart diagrams, mindmaps, and relationship graphs using D2 (via WASM) and complex math equations (KaTeX / LaTeX).
-* **Sandboxed Code Execution:** Secure, isolated iframe environment rendering dynamic HTML/JS visual assets (such as Chart.js graphs) generated on-the-fly by the model.
+* **Rich Visualizations (Vega-Lite & D2):** Native, interactive rendering of data charts using **Vega / Vega-Lite**, and dynamic flowchart diagrams, mindmaps, and relationship graphs using **D2** (via WASM).
+* **Sandboxed Code & Asset Execution:** Secure, isolated iframe environments rendering raw HTML, SVG, and dynamic JS visual assets (such as Chart.js) generated on-the-fly by the AI.
+* **KaTeX Support:** Fast rendering of complex mathematical equations and formulas.
 * **File Attachments:** Upload and analyze images, PDFs, and structured documents (CSV, DOCX).
 * **Voice-to-Text:** Integrated speech-to-text interface allowing users to dictate queries directly.
 
@@ -109,7 +110,7 @@ graph TD
 * **Core:** React 18, TypeScript, Tailwind CSS, Vite
 * **State Management:** Zustand
 * **Animations:** Framer Motion
-* **Charts/Analytics:** Recharts
+* **Charts/Analytics:** Recharts, Vega, Vega-Lite
 * **Markdown & Diagrams:** React Markdown, rehype-katex, remark-math, remark-gfm, rehype-raw, and @terrastruct/d2
 * **Icons:** Lucide React
 
